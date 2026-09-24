@@ -95,6 +95,14 @@ pub(crate) fn clipped(text: &str, width: usize) -> String {
     if text.chars().count() <= width {
         return text.to_string();
     }
+    if let Some(at) = text.rfind(" (") {
+        let tail = &text[at + 1..];
+        let tail_len = tail.chars().count();
+        if tail.ends_with(')') && tail_len + 4 <= width {
+            let head: String = text.chars().take(width - tail_len - 3).collect();
+            return format!("{head}...{tail}");
+        }
+    }
     match width < 3 {
         true => text.chars().take(width).collect(),
         false => format!("{}...", text.chars().take(width - 3).collect::<String>()),

@@ -1,10 +1,14 @@
 use crate::ui::cells::*;
 use crate::ui::chrome::*;
 use crate::ui::form::*;
+use crate::ui::partition_bar::{chosen, placed, said};
+use crate::ui::progress::blend;
 use crate::ui::table;
 use crate::ui::NO_CHOICES;
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
+
+const CARET_STEPS: usize = 8;
 
 pub(crate) fn alerted(
     fields: &[Field],
@@ -47,10 +51,20 @@ pub(crate) fn laid_out(
         .map(|row| fields[*row].label().chars().count())
         .max()
         .unwrap_or(0);
+    let labels = width;
     for row in visible {
         if let Field::Table { rows, .. } = &fields[*row] {
             for cells in rows {
                 width = width.max(cells.first().map_or(0, |cell| cell.text.chars().count()));
+            }
+        }
+    }
+    for row in visible {
+        if let Field::Table { widths, .. } = &fields[*row] {
+            if !widths.is_empty() {
+                let fixed: usize =
+                    widths.iter().sum::<usize>() + 2 * widths.len().saturating_sub(1);
+                width = form_room().saturating_sub(7 + fixed).max(1).max(labels);
             }
         }
     }
@@ -90,6 +104,28 @@ pub(crate) fn laid_out(
                     Span::styled(value.clone(), Style::new().fg(colour)),
                 ]));
             }
+            HeaderLine::Placement {
+                holes,
+                offset,
+                size,
+                available,
+            } => {
+                let gb = |at: &usize| match fields.get(*at).map(Field::value) {
+                    Some(typed) if !typed.is_empty() => typed.parse().unwrap_or(u64::MAX),
+                    _ => 0,
+                };
+                lines.push(Line::from(placed(holes, gb(offset), gb(size), form_room())));
+                if let Some((hole, _)) = chosen(holes, gb(offset), gb(size)) {
+                    lines.push(Line::default());
+                    lines.push(Line::from(vec![
+                        Span::styled(format!("     {available:<width$}  "), Style::new().dim()),
+                        Span::raw(said(hole.gb)),
+                    ]));
+                }
+                if at + 1 < header.len() {
+                    lines.push(Line::default());
+                }
+            }
         }
     }
     if !header.is_empty() {
@@ -124,7 +160,7 @@ pub(crate) fn laid_out(
             None => glyph,
         };
         let label_style = match here {
-            true if open.is_some() => Style::new(),
+            true if open.is_some() || table_focused => Style::new(),
             true => Style::new().fg(HIGHLIGHT).bold(),
             false if field.answerable() => Style::new(),
             false => Style::new().dim(),
@@ -133,23 +169,27 @@ pub(crate) fn laid_out(
             label,
             column,
             headings,
+            widths: fixed,
             rows,
             cursor: table_cursor,
             ..
         } = field
         {
             let heads: Vec<&str> = headings.iter().map(String::as_str).collect();
-            let widths = column_widths(
-                &heads,
-                &value_cells(rows),
-                form_room().saturating_sub(7 + width),
-            );
+            let widths = match fixed.is_empty() {
+                true => column_widths(
+                    &heads,
+                    &value_cells(rows),
+                    form_room().saturating_sub(7 + width),
+                ),
+                false => fixed.clone(),
+            };
             let field_at = lines.len();
             lines.push(Line::from(vec![
                 Span::styled(
-                    match here {
-                        true => "> ",
-                        false => "  ",
+                    match (here, table_focused) {
+                        (true, false) => "> ",
+                        _ => "  ",
                     },
                     label_style,
                 ),
@@ -163,13 +203,12 @@ pub(crate) fn laid_out(
             ]));
             let first = lines.len();
             for (n, cells) in rows.iter().enumerate() {
-                let mut spans = vec![Span::raw("     ")];
-                spans.extend(table_row_spans(
-                    cells,
-                    width,
-                    &widths,
-                    table_focused && here && n == *table_cursor,
-                ));
+                let hot = table_focused && here && n == *table_cursor;
+                let mut spans = vec![match hot {
+                    true => Span::styled("   > ", Style::new().fg(HIGHLIGHT).bold()),
+                    false => Span::raw("     "),
+                }];
+                spans.extend(table_row_spans(cells, width, &widths, hot));
                 lines.push(Line::from(spans));
             }
             if here {
@@ -182,8 +221,9 @@ pub(crate) fn laid_out(
             continue;
         }
         let field_at = lines.len();
-        let value = match here && typing {
-            true => format!("{}\u{2588}", field.typing()),
+        let editing = here && typing;
+        let value = match editing {
+            true => field.typing(),
             false => field.shown(),
         };
         let mut row = vec![
@@ -205,6 +245,13 @@ pub(crate) fn laid_out(
         }
         if let Field::Measure { unit, .. } = field {
             row.push(Span::styled(format!(" {unit}"), Style::new().dim()));
+        }
+        if editing {
+            let caret = CARET.with(std::cell::Cell::get);
+            row.push(Span::styled(
+                "\u{258e}",
+                Style::new().fg(blend(caret as usize % CARET_STEPS, CARET_STEPS)),
+            ));
         }
         lines.push(Line::from(row));
         rows_began = true;

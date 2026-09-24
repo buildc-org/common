@@ -44,6 +44,7 @@ thread_local! {
     pub(crate) static REVEAL: std::cell::Cell<bool> = const {
         std::cell::Cell::new(false)
     };
+    pub(crate) static CARET: std::cell::Cell<u8> = const { std::cell::Cell::new(0) };
 }
 
 pub fn in_overlay<T>(

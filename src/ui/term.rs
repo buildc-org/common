@@ -110,6 +110,14 @@ pub(crate) fn render<B: Backend>(
         .map_err(|err| err.to_string())
 }
 
+pub(crate) fn read_for(ms: u64) -> Result<Option<KeyCode>, String> {
+    let ready = event::poll(std::time::Duration::from_millis(ms)).map_err(|err| err.to_string())?;
+    match ready {
+        true => read(),
+        false => Ok(None),
+    }
+}
+
 pub const INTERRUPTED: &str = "interrupted";
 
 pub(crate) fn revealed() -> bool {

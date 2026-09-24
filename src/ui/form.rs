@@ -3,6 +3,7 @@ use crate::ui::choose::*;
 use crate::ui::chrome::*;
 use crate::ui::layout::*;
 use crate::ui::menu::*;
+use crate::ui::partition_bar::*;
 use crate::ui::review::*;
 use crate::ui::term::*;
 use crate::ui::SUB_KEYS;
@@ -34,10 +35,12 @@ pub enum Field {
         label: String,
         column: String,
         headings: Vec<String>,
+        widths: Vec<usize>,
         rows: Vec<Vec<Cell>>,
         selectable: Vec<bool>,
         menus: Vec<Vec<MenuItem>>,
         cursor: usize,
+        focused: bool,
         chosen: bool,
     },
 }
@@ -118,17 +121,21 @@ impl Field {
         label: &str,
         column: &str,
         headings: &[&str],
+        widths: &[usize],
         rows: Vec<Vec<Cell>>,
         selectable: Vec<bool>,
         menus: Vec<Vec<MenuItem>>,
         cursor: usize,
+        focused: bool,
         chosen: bool,
     ) -> Self {
         Self::Table {
             label: label.to_string(),
             column: column.to_string(),
             headings: headings.iter().map(|heading| heading.to_string()).collect(),
+            widths: widths.to_vec(),
             cursor: cursor.min(rows.len().saturating_sub(1)),
+            focused,
             rows,
             selectable,
             menus,
@@ -250,6 +257,12 @@ pub enum HeaderLine {
     Pair(String, String),
     Good(String, String),
     Warn(String, String),
+    Placement {
+        holes: Vec<Hole>,
+        offset: usize,
+        size: usize,
+        available: String,
+    },
 }
 
 pub(crate) enum Mode {
@@ -295,7 +308,13 @@ pub fn form(
         let mut cursor = opens_at(&shown(fields), start);
         let mut button = 0usize;
         let mut mode = Mode::Rows;
+        if let Some(row) = shown(fields).get(cursor) {
+            if matches!(fields[*row], Field::Table { focused: true, .. }) {
+                mode = Mode::Table;
+            }
+        }
         let mut tried = false;
+        let mut caret: u8 = 0;
         loop {
             let visible = shown(fields);
             cursor = cursor.min(match actions.is_empty() {
@@ -317,6 +336,7 @@ pub fn form(
                 }
             }
             let blocked = blocked(fields);
+            CARET.with(|step| step.set(caret));
             let (lines, focus, tail) = laid_out(
                 fields,
                 &visible,
@@ -357,7 +377,14 @@ pub fn form(
                 }
                 BACKDROP.with(|saved| *saved.borrow_mut() = Some(frame.buffer_mut().clone()));
             })?;
-            let Some(key) = read()? else { continue };
+            let key = match matches!(mode, Mode::Typing) && !caret_frozen() {
+                true => read_for(CARET_TICK_MS)?,
+                false => read()?,
+            };
+            let Some(key) = key else {
+                caret = caret.wrapping_add(1);
+                continue;
+            };
             let Some(row) = at_row else {
                 match key {
                     KeyCode::Esc | KeyCode::Char('q') => return Ok(Filled::Left),
@@ -589,6 +616,15 @@ pub fn form(
                     KeyCode::Enter if matches!(fields[row], Field::Action { .. }) => {
                         return Ok(Filled::Opened(row))
                     }
+                    KeyCode::Enter if matches!(fields[row], Field::Table { .. }) => {
+                        if let Field::Table {
+                            selectable, cursor, ..
+                        } = &mut fields[row]
+                        {
+                            *cursor = first_selectable(selectable);
+                        }
+                        mode = Mode::Table;
+                    }
                     KeyCode::Enter => mode = opened(&fields[row]),
                     _ => {}
                 },
@@ -690,4 +726,15 @@ fn left_row(left: &mut Vec<usize>, row: usize) {
     if !left.contains(&row) {
         left.push(row);
     }
+}
+
+pub(crate) fn first_selectable(selectable: &[bool]) -> usize {
+    selectable.iter().position(|ok| *ok).unwrap_or(0)
+}
+
+const CARET_TICK_MS: u64 = 120;
+
+// The caret advances on a timer, so `BUILDC_CARET=static` freezes it for a stable snapshot.
+pub(crate) fn caret_frozen() -> bool {
+    std::env::var_os("BUILDC_CARET").is_some_and(|value| value == "static")
 }

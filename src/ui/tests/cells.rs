@@ -32,10 +32,12 @@ fn the_inline_table_marks_the_cursor_and_which_answers_are_set() {
         "disk",
         "disk",
         &copy::layout_headings(),
+        &[],
         rows,
         vec![true, true, true],
         vec![Vec::new(); 3],
         1,
+        false,
         true,
     )];
     let (lines, _, _) = laid_out(
@@ -95,4 +97,13 @@ fn the_inline_table_marks_the_cursor_and_which_answers_are_set() {
         row_text(headings).find("size"),
         row_text(disk_row).find("64G"),
     );
+}
+
+#[test]
+fn a_clipped_row_keeps_the_node_after_its_label() {
+    assert_eq!(
+        clipped("LONG-PARTITION-DESCRIPTION (/dev/sda1)", 20),
+        "LONG-P...(/dev/sda1)"
+    );
+    assert_eq!(clipped("unbreakable", 4), "u...");
 }
