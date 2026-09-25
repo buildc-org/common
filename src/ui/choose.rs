@@ -22,6 +22,7 @@ pub struct Choice {
     pub dim: bool,
     pub tint: bool,
     pub heading: bool,
+    pub warning: bool,
 }
 
 impl Choice {
@@ -36,6 +37,7 @@ impl Choice {
             dim: false,
             tint: false,
             heading: false,
+            warning: false,
         }
     }
 
@@ -63,6 +65,11 @@ impl Choice {
     pub fn heading(mut self) -> Self {
         self.available = false;
         self.heading = true;
+        self
+    }
+
+    pub fn warning(mut self) -> Self {
+        self.warning = true;
         self
     }
 
@@ -382,6 +389,7 @@ pub(crate) fn draw(
             let row = match (choice.heading, choice.dim) {
                 (true, _) => Style::new().fg(Color::White).bold(),
                 (false, true) => Style::new().dim(),
+                (false, false) if choice.warning => Style::new().fg(AMBER).bold(),
                 (false, false) => Style::new(),
             };
             let mut spans = vec![

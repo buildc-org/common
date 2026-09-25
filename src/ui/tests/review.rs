@@ -37,19 +37,23 @@ fn the_completion_screen_draws_the_recovery_key() {
             "",
         )
         .content(),
+        Choice::new("the automatic action explains itself here", "").content(),
+        Choice::new(copy::AUTO_WINDOW, "").warning().content(),
         Choice::new("", ""),
-        Choice::new(copy::RESTART, ""),
+        Choice::new(copy::RESTART_AUTO, ""),
+        Choice::new(copy::RESTART_MANUAL, ""),
     ];
-    for (at, choice) in options.iter().enumerate().take(options.len() - 2) {
+    for (at, choice) in options.iter().enumerate().take(options.len() - 3) {
         if choice.label.is_empty() {
             continue;
         }
         assert!(!choice.available, "row {at} is landable");
         assert!(!choice.dim, "row {at} is dim");
     }
+    assert!(available(&options, options.len() - 2));
     assert!(available(&options, options.len() - 1));
 
-    let at = options.len() - 1;
+    let at = options.len() - 2;
     let mut state = ListState::default().with_selected(Some(at));
     let mut terminal = Terminal::new(TestBackend::new(72, options.len() as u16 + 2)).unwrap();
     terminal
@@ -68,7 +72,22 @@ fn the_completion_screen_draws_the_recovery_key() {
     let drawn = terminal.backend().to_string();
     assert!(drawn.contains(KEY), "the key is not on the screen: {drawn}");
     assert!(drawn.contains("/var/log/bootc-anywhere.log"), "{drawn}");
-    assert!(drawn.contains(copy::RESTART), "{drawn}");
+    assert!(drawn.contains(copy::RESTART_AUTO), "{drawn}");
+    assert!(drawn.contains(copy::RESTART_MANUAL), "{drawn}");
+    let buffer = terminal.backend().buffer().clone();
+    let warn_row = (1..buffer.area.height)
+        .find(|row| {
+            (0..buffer.area.width)
+                .map(|column| buffer[(column, *row)].symbol().to_string())
+                .collect::<String>()
+                .contains(copy::AUTO_WINDOW)
+        })
+        .expect("the window is not drawn");
+    let lit = (0..buffer.area.width)
+        .map(|column| &buffer[(column, warn_row)])
+        .find(|cell| !cell.symbol().trim().is_empty())
+        .expect("the window has no ink");
+    assert_eq!(lit.fg, AMBER, "the window is not the warning colour");
 
     let buffer = terminal.backend().buffer();
     for heading in [copy::RECOVERY_HEADING, copy::NEXT_STEPS_HEADING] {

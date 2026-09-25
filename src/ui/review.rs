@@ -218,17 +218,17 @@ pub(crate) fn decide_draw(
 pub fn offer_over(
     question: &str,
     rows: Vec<Choice>,
-    action: &str,
+    actions: &[Choice],
     keys: &str,
-) -> Result<bool, String> {
+) -> Result<Option<usize>, String> {
     let mut options = rows;
+    let first = options.len() + 1;
     options.push(Choice::new("", ""));
-    options.push(Choice::new(action, ""));
-    let at = options.len() - 1;
+    options.extend(actions.iter().cloned());
     let chosen = inline((options.len() + 2) as u16, |terminal| {
-        pick(terminal, question, &options, keys, at)
+        pick(terminal, question, &options, keys, first)
     })?;
-    Ok(chosen == Some(at))
+    Ok(chosen.and_then(|chosen| chosen.checked_sub(first)))
 }
 
 fn sheet(rows: &[(String, String)], action: &str, blocked: Option<&str>) -> Vec<Choice> {
