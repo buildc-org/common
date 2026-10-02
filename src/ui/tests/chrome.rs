@@ -6,7 +6,7 @@ fn the_installer_box_reads_square_on_the_measured_consoles() {
         let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
         terminal
             .draw(|frame| {
-                chrome(frame, Some("Buildc installer"), "", 12, "");
+                chrome(frame, Some("bootc-anywhere installer"), "", 12, "");
             })
             .unwrap();
         let drawn = terminal.backend().to_string();
@@ -42,12 +42,15 @@ fn the_installer_box_reads_square_on_the_measured_consoles() {
 
 #[test]
 fn a_read_only_screen_is_set_in_the_middle_of_the_box() {
-    let items = [ListItem::new("Recovery Key:"), ListItem::new("a short row")];
+    let items = [
+        ListItem::new("Recovery Key:"),
+        ListItem::new("  a short row"),
+    ];
     let body = Rect::new(5, 7, 68, 30);
     let placed = set_in(body, &items, 4);
     assert_eq!(
         placed,
-        Rect::new(5 + (68 - 15) / 2, 7 + (30 - 4) / 2, 15, 4)
+        Rect::new(5 + (68 - 13) / 2, 7 + (30 - 4) / 2, 13, 4)
     );
     assert_eq!(set_in(body, &items, 40).height, body.height);
 }
@@ -60,7 +63,13 @@ fn an_overlay_keeps_its_size_whatever_it_holds() {
         terminal
             .draw(|frame| {
                 inner = in_overlay(40, 10, || {
-                    Ok(chrome(frame, Some("Buildc installer"), "", rows, ""))
+                    Ok(chrome(
+                        frame,
+                        Some("bootc-anywhere installer"),
+                        "",
+                        rows,
+                        "",
+                    ))
                 })
                 .unwrap();
             })

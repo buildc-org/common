@@ -161,11 +161,6 @@ pub(crate) fn centred(area: Rect, width: u16, height: u16) -> Rect {
 }
 
 pub(crate) fn set_in(body: Rect, items: &[ListItem], rows: usize) -> Rect {
-    let width = items
-        .iter()
-        .map(ListItem::width)
-        .max()
-        .unwrap_or(0)
-        .saturating_add(2) as u16;
+    let width = items.iter().map(ListItem::width).max().unwrap_or(0) as u16;
     centred(body, width, rows.min(usize::from(body.height)) as u16)
 }
