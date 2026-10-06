@@ -249,7 +249,7 @@ fn sheet(rows: &[(String, String)], action: &str, blocked: Option<&str>) -> Vec<
     options
 }
 
-pub fn line(question: &str, prefix: &str, default: Option<&str>) -> Result<String, String> {
+pub fn line(question: &str, prefix: &str, default: Option<&str>) -> Result<Option<String>, String> {
     inline(3, |terminal| {
         let mut typed = String::new();
         loop {
@@ -258,8 +258,8 @@ pub fn line(question: &str, prefix: &str, default: Option<&str>) -> Result<Strin
             })?;
             let Some(key) = read()? else { continue };
             match key {
-                KeyCode::Enter => return Ok(typed),
-                KeyCode::Esc => return Ok(String::new()),
+                KeyCode::Enter => return Ok(Some(typed)),
+                KeyCode::Esc => return Ok(None),
                 KeyCode::Backspace => {
                     typed.pop();
                 }
@@ -268,6 +268,14 @@ pub fn line(question: &str, prefix: &str, default: Option<&str>) -> Result<Strin
             }
         }
     })
+}
+
+pub fn line_or_empty(
+    question: &str,
+    prefix: &str,
+    default: Option<&str>,
+) -> Result<String, String> {
+    Ok(line(question, prefix, default)?.unwrap_or_default())
 }
 
 pub(crate) fn written(
