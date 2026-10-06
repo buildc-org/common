@@ -86,6 +86,8 @@ pub(crate) fn decide_content_height(
     rows.len() + 3 + cost + warned + usize::from(!head_row(heading).is_empty())
 }
 
+pub(crate) const LINE_ROWS: u16 = 3;
+
 pub fn decide(
     heading: &str,
     note: &str,
@@ -201,7 +203,7 @@ pub(crate) fn decide_draw(
         .map(Line::width)
         .max()
         .unwrap_or(0) as u16;
-    let placed = match CHROME.get().is_some() {
+    let placed = match boxed() {
         true => {
             let all = lines.len() as u16 + footer.len() as u16;
             centred(area, widest, all)
@@ -250,10 +252,10 @@ fn sheet(rows: &[(String, String)], action: &str, blocked: Option<&str>) -> Vec<
 }
 
 pub fn line(question: &str, prefix: &str, default: Option<&str>) -> Result<Option<String>, String> {
-    inline(3, |terminal| {
+    inline(LINE_ROWS, |terminal| {
         let mut typed = String::new();
         loop {
-            render(terminal, 3, LINE_KEYS, question, |frame, area| {
+            render(terminal, LINE_ROWS, LINE_KEYS, question, |frame, area| {
                 written(frame, area, question, prefix, &typed, default)
             })?;
             let Some(key) = read()? else { continue };

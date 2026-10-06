@@ -6,6 +6,9 @@ rust-version = "1.88"
 publish = false
 description = "The components every Buildc command and the bootc installer share"
 
+[features]
+test-support = []
+
 [dependencies]
 libc = "0.2"
 ratatui = { version = "0.30.2", default-features = false, features = ["crossterm"] }

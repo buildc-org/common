@@ -8,6 +8,8 @@ use crate::ui::review::*;
 use crate::ui::term::*;
 use crate::ui::SUB_KEYS;
 use ratatui::crossterm::event::KeyCode;
+use ratatui::layout::Rect;
+use ratatui::Frame;
 
 pub enum Field {
     Text { label: String, value: String },
@@ -265,7 +267,7 @@ pub enum HeaderLine {
     },
 }
 
-pub(crate) enum Mode {
+pub enum Mode {
     Rows,
     Typing,
     Open(usize),
@@ -274,6 +276,10 @@ pub(crate) enum Mode {
         open: Option<usize>,
         cursor: usize,
     },
+}
+
+pub(crate) fn form_frame_rows(lines: usize) -> u16 {
+    lines as u16 + 1
 }
 
 pub fn opens_at(shown: &[usize], field: usize) -> usize {
@@ -353,30 +359,19 @@ pub fn form(
                 Mode::Open(_) | Mode::Table | Mode::TableMenu { .. } => SUB_KEYS,
                 _ => keys,
             };
-            render(terminal, lines.len() as u16 + 1, keys, "", |frame, area| {
-                sheet_of(frame, area, &lines, keys, focus, tail);
-                if let (Mode::TableMenu { open, cursor }, Some(row)) = (&mode, at_row) {
-                    if let Field::Table {
-                        rows,
-                        menus,
-                        cursor: table_at,
-                        ..
-                    } = &fields[row]
-                    {
-                        let items = menus.get(*table_at).map(Vec::as_slice).unwrap_or(&[]);
-                        let title = rows
-                            .get(*table_at)
-                            .and_then(|cells| cells.first())
-                            .map(Cell::text)
-                            .unwrap_or("")
-                            .trim_start_matches([
-                                '\u{251c}', '\u{2514}', '\u{2500}', '\u{2502}', ' ',
-                            ]);
-                        menu_draw(frame, area, title, items, *open, *cursor);
+            render(
+                terminal,
+                form_frame_rows(lines.len()),
+                keys,
+                "",
+                |frame, area| {
+                    sheet_of(frame, area, &lines, keys, focus, tail);
+                    if let (Mode::TableMenu { open, cursor }, Some(row)) = (&mode, at_row) {
+                        draw_table_menu(frame, area, fields, row, *open, *cursor);
                     }
-                }
-                BACKDROP.with(|saved| *saved.borrow_mut() = Some(frame.buffer_mut().clone()));
-            })?;
+                    BACKDROP.with(|saved| *saved.borrow_mut() = Some(frame.buffer_mut().clone()));
+                },
+            )?;
             let key = match matches!(mode, Mode::Typing) && !caret_frozen() {
                 true => read_for(CARET_TICK_MS)?,
                 false => read()?,
@@ -637,6 +632,33 @@ pub fn form(
             }
         }
     })
+}
+
+pub(crate) fn draw_table_menu(
+    frame: &mut Frame,
+    area: Rect,
+    fields: &[Field],
+    row: usize,
+    open: Option<usize>,
+    cursor: usize,
+) {
+    let Some(Field::Table {
+        rows,
+        menus,
+        cursor: table_at,
+        ..
+    }) = fields.get(row)
+    else {
+        return;
+    };
+    let items = menus.get(*table_at).map(Vec::as_slice).unwrap_or(&[]);
+    let title = rows
+        .get(*table_at)
+        .and_then(|cells| cells.first())
+        .map(Cell::text)
+        .unwrap_or("")
+        .trim_start_matches(['\u{251c}', '\u{2514}', '\u{2500}', '\u{2502}', ' ']);
+    menu_draw(frame, area, title, items, open, cursor);
 }
 
 pub(crate) fn onward(fields: &[Field], visible: &[usize], cursor: &mut usize) -> Mode {

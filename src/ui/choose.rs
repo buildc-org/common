@@ -267,8 +267,7 @@ pub(crate) fn pick<B: Backend>(
     hint: &str,
     selected: usize,
 ) -> Result<Option<usize>, String> {
-    let mut state = ListState::default().with_selected(Some(selected));
-    skip_spacers(KeyCode::Down, options, &mut state, Some(selected));
+    let mut state = initial_state(options, selected);
     loop {
         render(
             terminal,
@@ -291,6 +290,12 @@ pub(crate) fn pick<B: Backend>(
             }
         }
     }
+}
+
+pub(crate) fn initial_state(options: &[Choice], selected: usize) -> ListState {
+    let mut state = ListState::default().with_selected(Some(selected));
+    skip_spacers(KeyCode::Down, options, &mut state, Some(selected));
+    state
 }
 
 fn passed_over(options: &[Choice], at: usize) -> bool {
@@ -477,7 +482,7 @@ pub(crate) fn draw(
         })
         .collect();
     let rows = items.len();
-    let placed = match CHROME.get().is_some() {
+    let placed = match boxed() {
         true => set_in(body, &items, rows),
         false => body,
     };

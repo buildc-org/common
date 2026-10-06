@@ -45,6 +45,67 @@ thread_local! {
         std::cell::Cell::new(false)
     };
     pub(crate) static CARET: std::cell::Cell<u8> = const { std::cell::Cell::new(0) };
+    static FRAME_BOX: std::cell::Cell<Option<bool>> = const { std::cell::Cell::new(None) };
+}
+
+struct FrameBox(Option<bool>);
+
+impl Drop for FrameBox {
+    fn drop(&mut self) {
+        FRAME_BOX.with(|boxed| boxed.set(self.0));
+    }
+}
+
+pub(crate) fn in_frame_box<T>(boxed: bool, body: impl FnOnce() -> T) -> T {
+    let previous = FRAME_BOX.with(|held| held.replace(Some(boxed)));
+    let _restore = FrameBox(previous);
+    body()
+}
+
+pub(crate) fn boxed() -> bool {
+    FRAME_BOX
+        .with(std::cell::Cell::get)
+        .unwrap_or_else(|| has_box(CHROME.get().map(String::as_str)))
+}
+
+pub(crate) fn has_box(title: Option<&str>) -> bool {
+    title.is_some() || OVERLAY_TITLE.with(|held| held.borrow().is_some())
+}
+
+struct OverlayFrame {
+    size: Option<(u16, u16)>,
+    title: Option<String>,
+    backdrop: Option<Option<Buffer>>,
+}
+
+impl Drop for OverlayFrame {
+    fn drop(&mut self) {
+        OVERLAY.with(|held| held.set(self.size));
+        OVERLAY_TITLE.with(|held| {
+            held.replace(self.title.take());
+        });
+        if let Some(backdrop) = self.backdrop.take() {
+            BACKDROP.with(|held| {
+                held.replace(backdrop);
+            });
+        }
+    }
+}
+
+pub(crate) fn in_overlay_frame<T>(
+    width: u16,
+    height: u16,
+    title: Option<&str>,
+    backdrop: Option<&Buffer>,
+    body: impl FnOnce() -> T,
+) -> T {
+    let _restore = OverlayFrame {
+        size: OVERLAY.with(|held| held.replace(Some((width, height)))),
+        title: OVERLAY_TITLE.with(|held| held.replace(title.map(str::to_string))),
+        backdrop: backdrop
+            .map(|backdrop| BACKDROP.with(|held| held.replace(Some(backdrop.clone())))),
+    };
+    body()
 }
 
 pub fn in_overlay<T>(
@@ -52,10 +113,7 @@ pub fn in_overlay<T>(
     height: u16,
     body: impl FnOnce() -> Result<T, String>,
 ) -> Result<T, String> {
-    OVERLAY.with(|overlay| overlay.set(Some((width, height))));
-    let done = body();
-    OVERLAY.with(|overlay| overlay.set(None));
-    done
+    in_overlay_frame(width, height, None, None, body)
 }
 
 pub fn in_titled_overlay<T>(
@@ -64,10 +122,7 @@ pub fn in_titled_overlay<T>(
     title: &str,
     body: impl FnOnce() -> Result<T, String>,
 ) -> Result<T, String> {
-    OVERLAY_TITLE.with(|held| *held.borrow_mut() = Some(title.to_string()));
-    let done = in_overlay(width, height, body);
-    OVERLAY_TITLE.with(|held| *held.borrow_mut() = None);
-    done
+    in_overlay_frame(width, height, Some(title), None, body)
 }
 
 pub(crate) fn chrome(
@@ -136,16 +191,16 @@ pub(crate) fn chrome(
 }
 
 pub(crate) fn hint_row(keys: &str) -> &str {
-    match CHROME.get() {
-        Some(_) => "",
-        None => keys,
+    match boxed() {
+        true => "",
+        false => keys,
     }
 }
 
 pub(crate) fn head_row(question: &str) -> &str {
-    match CHROME.get() {
-        Some(_) => "",
-        None => question,
+    match boxed() {
+        true => "",
+        false => question,
     }
 }
 

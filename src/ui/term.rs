@@ -101,10 +101,30 @@ pub(crate) fn render<B: Backend>(
     head: &str,
     body: impl FnOnce(&mut Frame, Rect),
 ) -> Result<(), String> {
+    render_with_title(
+        terminal,
+        CHROME.get().map(String::as_str),
+        rows,
+        keys,
+        head,
+        body,
+    )
+}
+
+pub(crate) fn render_with_title<B: Backend>(
+    terminal: &mut ratatui::Terminal<B>,
+    title: Option<&str>,
+    rows: u16,
+    keys: &str,
+    head: &str,
+    body: impl FnOnce(&mut Frame, Rect),
+) -> Result<(), String> {
     terminal
         .draw(|frame| {
-            let area = chrome(frame, CHROME.get().map(String::as_str), head, rows, keys);
-            body(frame, area);
+            in_frame_box(has_box(title), || {
+                let area = chrome(frame, title, head, rows, keys);
+                body(frame, area);
+            });
         })
         .map(|_| ())
         .map_err(|err| err.to_string())

@@ -1,4 +1,6 @@
 pub mod table;
+#[cfg(feature = "test-support")]
+pub mod testing;
 pub mod tree;
 
 pub(crate) const PICK: &str = "up and down to move, enter to choose, esc cancels";

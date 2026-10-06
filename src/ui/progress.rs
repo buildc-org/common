@@ -9,7 +9,7 @@ use ratatui::{DefaultTerminal, Frame};
 
 const LOGGED: usize = 256;
 
-const ROWS: u16 = 9;
+pub(crate) const ROWS: u16 = 9;
 
 pub struct Progress {
     terminal: DefaultTerminal,
@@ -72,10 +72,7 @@ impl Progress {
             self.notes.as_slice(),
             self.foot.as_str(),
         );
-        let head = match CHROME.get().is_some() && !step.is_empty() {
-            true => step_line(turn, step),
-            false => String::new(),
-        };
+        let head = progress_head(turn, step);
         render(&mut self.terminal, ROWS, foot, &head, |frame, area| {
             working(frame, area, pct, turn, step, notes, foot)
         })
@@ -83,6 +80,13 @@ impl Progress {
 
     pub fn close(self) {
         close(self.terminal);
+    }
+}
+
+pub(crate) fn progress_head(turn: usize, step: &str) -> String {
+    match boxed() && !step.is_empty() {
+        true => step_line(turn, step),
+        false => String::new(),
     }
 }
 
@@ -106,7 +110,7 @@ pub(crate) fn working(
     ])
     .areas(area);
     frame.render_widget(bar(pct, meter.width), meter);
-    if CHROME.get().is_none() {
+    if !boxed() {
         frame.render_widget(
             Line::from(vec![
                 Span::styled(TURNING[turn % TURNING.len()], Style::new().fg(HIGHLIGHT)),
