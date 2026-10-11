@@ -3,15 +3,18 @@ pub mod table;
 pub mod testing;
 pub mod tree;
 
-pub(crate) const PICK: &str = "up and down to move, enter to choose, esc cancels";
-pub(crate) const TOGGLE: &str = "space toggles, enter confirms, esc cancels";
-pub(crate) const EITHER: &str = "up and down to move, enter to answer";
-pub(crate) const EITHER_CANCEL: &str = "up and down to move, enter to answer, esc cancels";
-pub const SIDE: &str = "left and right to move, enter to answer";
-pub(crate) const NEST: &str = "filter, space toggles, ←/→ opens, enter confirms";
+pub(crate) const PICK: &str =
+    "\u{2191}\u{2193} navigate \u{2022} \u{23ce}  select \u{2022} Esc cancel";
+pub(crate) const TOGGLE: &str =
+    "\u{2191}\u{2193} navigate \u{2022} \u{2423} toggle \u{2022} \u{23ce}  confirm \u{2022} Esc cancel";
+pub(crate) const EITHER: &str = "\u{2191}\u{2193} navigate \u{2022} \u{23ce}  confirm";
+pub(crate) const EITHER_CANCEL: &str =
+    "\u{2191}\u{2193} navigate \u{2022} \u{23ce}  confirm \u{2022} Esc cancel";
+pub const SIDE: &str = "\u{2190}/\u{2192} select \u{2022} \u{23ce}  confirm \u{2022} Esc back";
+pub(crate) const NEST: &str = "\u{2191}\u{2193} navigate \u{2022} \u{2190}/\u{2192} open \u{2022} \u{2423} toggle \u{2022} \u{23ce}  confirm \u{2022} Esc cancel";
 pub(crate) const SUB_KEYS: &str =
     "\u{2191}\u{2193} navigate \u{2022} \u{23ce}  select \u{2022} Esc back";
-pub(crate) const LINE_KEYS: &str = "enter confirms, esc cancels";
+pub(crate) const LINE_KEYS: &str = "\u{23ce}  confirm \u{2022} Esc cancel";
 pub(crate) const NO_CHOICES: &str = "No available choices";
 
 mod cells;
