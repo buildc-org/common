@@ -7,6 +7,7 @@ publish = false
 description = "The components every Buildc command and the bootc installer share"
 
 [features]
+fuzzing = []
 test-support = []
 
 [dependencies]
