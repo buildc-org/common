@@ -113,7 +113,7 @@ pub fn choose(
     options: &[&str],
     at: usize,
 ) -> Result<Option<usize>, String> {
-    let height = options.len() as u16 + 4;
+    let height = to_cells(options.len() + 4);
     in_titled_overlay(WINDOW_WIDTH, height, title, || {
         inline(height, |terminal| {
             let mut cursor = at.min(options.len().saturating_sub(1));
@@ -160,7 +160,7 @@ pub fn confirm_over(
 ) -> Result<bool, String> {
     let mut button = 0usize;
     let head = usize::from(!heading.is_empty()) * 2;
-    let height = (rows.len() + head + 2 + 4) as u16;
+    let height = to_cells(rows.len() + head + 2 + 4);
     in_titled_overlay(WINDOW_WIDTH, height, title, || {
         inline(height, |terminal| loop {
             let mut lines: Vec<Line<'static>> = Vec::new();

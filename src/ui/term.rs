@@ -8,7 +8,7 @@ use ratatui::{DefaultTerminal, Frame, TerminalOptions, Viewport};
 use std::io::IsTerminal;
 use std::sync::OnceLock;
 
-pub(crate) const NARROWEST: usize = 80;
+pub(crate) const NARROWEST: u16 = 80;
 
 pub(crate) fn colour() -> bool {
     std::io::stdout().is_terminal()
@@ -16,7 +16,7 @@ pub(crate) fn colour() -> bool {
 
 pub fn width() -> usize {
     if !colour() {
-        return NARROWEST;
+        return usize::from(NARROWEST);
     }
     std::env::var("COLUMNS")
         .ok()
@@ -27,7 +27,7 @@ pub fn width() -> usize {
                 .ok()
                 .filter(|cols| *cols > 0)
         })
-        .unwrap_or(NARROWEST)
+        .unwrap_or(usize::from(NARROWEST))
 }
 
 pub(crate) fn parse_width(width: &str) -> Option<u16> {
@@ -39,7 +39,11 @@ pub fn bold(text: &str) -> String {
 }
 
 pub(crate) fn height(rows: usize) -> u16 {
-    (rows.min(VISIBLE) + 2) as u16
+    to_cells(rows.min(VISIBLE) + 2)
+}
+
+pub(crate) fn to_cells(count: usize) -> u16 {
+    u16::try_from(count).unwrap_or(u16::MAX)
 }
 
 // An inline viewport needs a size before the first draw, so a terminal that reports none is given a default.
@@ -49,7 +53,7 @@ fn give_size() {
     }
     let size = libc::winsize {
         ws_row: 24,
-        ws_col: NARROWEST as u16,
+        ws_col: NARROWEST,
         ws_xpixel: 0,
         ws_ypixel: 0,
     };
@@ -80,8 +84,12 @@ pub(crate) fn close(mut terminal: DefaultTerminal) {
     let origin = terminal.get_frame().area().as_position();
     let _ = terminal.clear();
     let _ = terminal.set_cursor_position(origin);
-    let _ = terminal.show_cursor();
-    let _ = terminal::disable_raw_mode();
+    if let Err(err) = terminal.show_cursor() {
+        eprint!("the cursor could not be shown again: {err}\r\n`tput cnorm` shows it\r\n");
+    }
+    if let Err(err) = terminal::disable_raw_mode() {
+        eprint!("the terminal could not leave raw mode: {err}\r\n`stty sane` restores it\r\n");
+    }
 }
 
 pub(crate) fn inline<T>(

@@ -55,7 +55,11 @@ fn the_completion_screen_draws_the_recovery_key() {
 
     let at = options.len() - 2;
     let mut state = ListState::default().with_selected(Some(at));
-    let mut terminal = Terminal::new(TestBackend::new(72, options.len() as u16 + 2)).unwrap();
+    let mut terminal = Terminal::new(TestBackend::new(
+        72,
+        u16::try_from(options.len() + 2).unwrap(),
+    ))
+    .unwrap();
     terminal
         .draw(|frame| {
             draw(
@@ -96,7 +100,7 @@ fn the_completion_screen_draws_the_recovery_key() {
             .position(|line| line.contains(heading))
             .unwrap_or_else(|| panic!("{heading} is not on the screen: {drawn}"));
         let cell = (0..buffer.area.width)
-            .map(|column| &buffer[(column, row as u16)])
+            .map(|column| &buffer[(column, u16::try_from(row).unwrap())])
             .find(|cell| !cell.symbol().trim().is_empty())
             .unwrap_or_else(|| panic!("{heading} has no ink: {drawn}"));
         assert_eq!(cell.fg, Color::White, "{heading} is not white: {drawn}");
@@ -106,7 +110,13 @@ fn the_completion_screen_draws_the_recovery_key() {
         );
     }
 
-    let row = KEY_ROW;
+    let row = u16::try_from(
+        drawn
+            .lines()
+            .position(|line| line.contains(KEY))
+            .expect("the key's row"),
+    )
+    .unwrap();
     let lit = (0..buffer.area.width)
         .map(|column| &buffer[(column, row)])
         .filter(|cell| !cell.symbol().trim().is_empty())
@@ -139,7 +149,7 @@ fn the_completion_screen_draws_the_recovery_key() {
     assert_eq!(digits, std::collections::HashSet::from([Color::White]));
     assert_eq!(letters, std::collections::HashSet::from([HIGHLIGHT]));
 
-    let row = 1 + at as u16;
+    let row = 1 + u16::try_from(at).unwrap();
     let lit = (0..buffer.area.width)
         .map(|column| &buffer[(column, row)])
         .filter(|cell| !cell.symbol().trim().is_empty())
@@ -149,8 +159,6 @@ fn the_completion_screen_draws_the_recovery_key() {
         assert_eq!(cell.fg, HIGHLIGHT, "{drawn}");
     }
 }
-
-const KEY_ROW: u16 = 4;
 
 #[test]
 fn the_confirmation_shows_the_answers_and_lights_the_one_enter_takes() {

@@ -119,6 +119,10 @@ impl Field {
         Self::Gap
     }
 
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "each parameter fills one field of `Field::Table`"
+    )]
     pub fn table(
         label: &str,
         column: &str,
@@ -149,7 +153,12 @@ impl Field {
         match self {
             Self::Table { chosen, .. } => *chosen,
             Self::Pick { at, .. } => at.is_some(),
-            _ => !self.value().is_empty(),
+            Self::Text { .. }
+            | Self::Secret { .. }
+            | Self::Measure { .. }
+            | Self::Fixed { .. }
+            | Self::Action { .. }
+            | Self::Gap => !self.value().is_empty(),
         }
     }
 
@@ -202,7 +211,12 @@ impl Field {
                 Err(_) => value.clone(),
             },
             Self::Table { .. } => String::new(),
-            _ => self.value(),
+            Self::Text { .. }
+            | Self::Secret { .. }
+            | Self::Pick { .. }
+            | Self::Fixed { .. }
+            | Self::Action { .. }
+            | Self::Gap => self.value(),
         }
     }
 
@@ -210,7 +224,13 @@ impl Field {
         match self {
             Self::Secret { value, .. } if !revealed() => "*".repeat(value.chars().count()),
             Self::Measure { value, .. } => value.clone(),
-            _ => self.value(),
+            Self::Text { .. }
+            | Self::Secret { .. }
+            | Self::Pick { .. }
+            | Self::Fixed { .. }
+            | Self::Action { .. }
+            | Self::Gap
+            | Self::Table { .. } => self.value(),
         }
     }
 
@@ -267,7 +287,7 @@ pub enum HeaderLine {
     },
 }
 
-pub enum Mode {
+pub(super) enum Mode {
     Rows,
     Typing,
     Open(usize),
@@ -279,13 +299,22 @@ pub enum Mode {
 }
 
 pub(crate) fn form_frame_rows(lines: usize) -> u16 {
-    lines as u16 + 1
+    to_cells(lines + 1)
 }
 
 pub fn opens_at(shown: &[usize], field: usize) -> usize {
     shown.iter().position(|at| *at == field).unwrap_or(0)
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "each parameter is distinct form state that the calling command owns"
+)]
+#[expect(
+    clippy::too_many_lines,
+    clippy::excessive_nesting,
+    reason = "the key loop dispatches on the mode and then the key inside one terminal closure"
+)]
 pub fn form(
     fields: &mut [Field],
     actions: &[&str],
@@ -302,13 +331,19 @@ pub fn form(
         .iter()
         .map(|field| match field {
             Field::Table { rows, .. } => rows.len() + 1,
-            _ => 1,
+            Field::Text { .. }
+            | Field::Secret { .. }
+            | Field::Pick { .. }
+            | Field::Measure { .. }
+            | Field::Fixed { .. }
+            | Field::Action { .. }
+            | Field::Gap => 1,
         })
         .sum::<usize>()
         + 3;
     let view = match OVERLAY.with(std::cell::Cell::get) {
-        Some((_, height)) => (rows as u16).max(height),
-        None => rows as u16,
+        Some((_, height)) => to_cells(rows).max(height),
+        None => to_cells(rows),
     };
     inline(view, |terminal| {
         let mut cursor = opens_at(&shown(fields), start);
@@ -357,7 +392,7 @@ pub fn form(
             );
             let keys = match mode {
                 Mode::Open(_) | Mode::Table | Mode::TableMenu { .. } => SUB_KEYS,
-                _ => keys,
+                Mode::Rows | Mode::Typing => keys,
             };
             render(
                 terminal,
@@ -655,8 +690,7 @@ pub(crate) fn draw_table_menu(
     let title = rows
         .get(*table_at)
         .and_then(|cells| cells.first())
-        .map(Cell::text)
-        .unwrap_or("")
+        .map_or("", Cell::text)
         .trim_start_matches(['\u{251c}', '\u{2514}', '\u{2500}', '\u{2502}', ' ']);
     menu_draw(frame, area, title, items, open, cursor);
 }
@@ -687,7 +721,14 @@ pub(crate) fn landed(fields: &[Field], visible: &[usize], cursor: usize) -> Mode
     match visible.get(cursor) {
         Some(row) => match &fields[*row] {
             Field::Pick { always: true, .. } => opened(&fields[*row]),
-            _ => Mode::Rows,
+            Field::Text { .. }
+            | Field::Secret { .. }
+            | Field::Pick { .. }
+            | Field::Measure { .. }
+            | Field::Fixed { .. }
+            | Field::Action { .. }
+            | Field::Gap
+            | Field::Table { .. } => Mode::Rows,
         },
         None => Mode::Rows,
     }
@@ -695,19 +736,20 @@ pub(crate) fn landed(fields: &[Field], visible: &[usize], cursor: usize) -> Mode
 
 pub(crate) fn opened(field: &Field) -> Mode {
     match field {
-        Field::Pick { options, at, .. } => options
-            .iter()
-            .position(|choice| !choice.hidden)
-            .map(|first| {
-                Mode::Open(
-                    at.filter(|at| options.get(*at).is_some_and(|choice| !choice.hidden))
-                        .unwrap_or(first),
-                )
-            })
-            .unwrap_or(Mode::Rows),
+        Field::Pick { options, at, .. } => {
+            options
+                .iter()
+                .position(|choice| !choice.hidden)
+                .map_or(Mode::Rows, |first| {
+                    Mode::Open(
+                        at.filter(|at| options.get(*at).is_some_and(|choice| !choice.hidden))
+                            .unwrap_or(first),
+                    )
+                })
+        }
         Field::Table { .. } => Mode::Table,
         Field::Fixed { .. } | Field::Action { .. } | Field::Gap => Mode::Rows,
-        _ => Mode::Typing,
+        Field::Text { .. } | Field::Secret { .. } | Field::Measure { .. } => Mode::Typing,
     }
 }
 
@@ -740,7 +782,7 @@ pub(crate) fn table_step(selectable: &[bool], at: usize, down: bool) -> Option<u
 pub(crate) fn form_room() -> usize {
     match OVERLAY.with(std::cell::Cell::get) {
         Some((width, _)) => (width as usize).saturating_sub(2 + 2 * PAD_X as usize),
-        None => (WIDEST.min(width() as u16) as usize).saturating_sub(2 + 2 * PAD_X as usize),
+        None => (WIDEST.min(to_cells(width())) as usize).saturating_sub(2 + 2 * PAD_X as usize),
     }
 }
 

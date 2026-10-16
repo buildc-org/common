@@ -25,7 +25,11 @@ pub struct Progress {
 impl Progress {
     pub fn open(foot: &str) -> Result<Self, String> {
         let terminal = open(ROWS)?;
-        let _ = terminal::disable_raw_mode();
+        // The progress screen reads no keys, so raw mode stays off and Ctrl-C interrupts the process.
+        if let Err(err) = terminal::disable_raw_mode() {
+            close(terminal);
+            return Err(format!("the terminal could not leave raw mode: {err}"));
+        }
         Ok(Self {
             terminal,
             pct: 0,
@@ -129,6 +133,10 @@ pub(crate) fn working(
 pub(crate) const COLD: (u8, u8, u8) = (0x5a, 0x56, 0xe0);
 pub(crate) const HOT: (u8, u8, u8) = (0xee, 0x6f, 0xf8);
 
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "`left` lies in (0, 1], so the share stays below `flight`"
+)]
 pub(crate) fn crept(pct: u16, flight: u16, within: u32) -> u16 {
     let left = HELD.powi(within.min(400) as i32);
     pct + (f64::from(flight) * (1.0 - left)) as u16
@@ -161,6 +169,10 @@ pub(crate) fn step_line(turn: usize, step: &str) -> String {
     format!("{} {step}", TURNING[turn % TURNING.len()])
 }
 
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "every calling command passes `at` below `room`, so each channel stays between its cold and hot value"
+)]
 pub(crate) fn blend(at: usize, room: usize) -> Color {
     let step = |cold: u8, hot: u8| {
         let (cold, hot) = (i32::from(cold), i32::from(hot));

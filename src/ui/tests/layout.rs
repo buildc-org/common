@@ -29,9 +29,9 @@ fn a_command_that_owns_the_screen_draws_one_box_around_the_form() {
         .draw(|frame| {
             let area = chrome(
                 frame,
-                Some("Buildc installer"),
+                Some("bootc-anywhere installer"),
                 "",
-                shown.len() as u16,
+                u16::try_from(shown.len()).unwrap(),
                 copy::INSTALL_KEYS,
             );
             sheet_of(frame, area, &shown, "", 0, 0)
@@ -42,7 +42,7 @@ fn a_command_that_owns_the_screen_draws_one_box_around_the_form() {
     assert!(rows[0].contains('\u{256d}'), "{drawn}");
     let top = rows
         .iter()
-        .position(|row| row.contains("Buildc installer"))
+        .position(|row| row.contains("bootc-anywhere installer"))
         .unwrap_or_else(|| panic!("{drawn}"));
     assert!(rows[top].contains('\u{256d}'), "{drawn}");
     assert!(drawn.contains("?  disk"), "{drawn}");
@@ -194,9 +194,9 @@ fn the_longest_panel_fits_the_fallback_console() {
         .draw(|frame| {
             let area = chrome(
                 frame,
-                Some("Buildc installer"),
+                Some("bootc-anywhere installer"),
                 "",
-                lines.len() as u16,
+                u16::try_from(lines.len()).unwrap(),
                 "",
             );
             sheet_of(frame, area, &lines, "", focus, 0);
@@ -358,8 +358,7 @@ fn an_actionless_window_draws_the_reason_it_refused_with() {
     assert_eq!(
         drawn.len(),
         4,
-        "two fields, the blank, and the reason: {:?}",
-        drawn
+        "two fields, the blank, and the reason: {drawn:?}"
     );
     assert!(drawn[2].is_empty(), "one blank under the field: {drawn:?}");
     assert!(drawn[3].contains(WHY), "{drawn:?}");
@@ -388,10 +387,15 @@ fn a_measure_takes_only_digits_and_reads_with_one_decimal() {
         .map(|span| span.content.as_ref())
         .collect();
     assert!(text.contains("20.0 GB"), "{text}");
+    let unit = lines[0]
+        .spans
+        .iter()
+        .find(|span| span.content.contains("GB"))
+        .expect("the unit span");
     assert!(
-        lines[0].spans[4].style.add_modifier.contains(Modifier::DIM),
+        unit.style.add_modifier.contains(Modifier::DIM),
         "the unit is drawn apart from the value: {:?}",
-        lines[0].spans[4].style
+        unit.style
     );
 }
 
@@ -597,10 +601,10 @@ fn a_flagged_pair_is_drawn_red_on_its_values() {
         &[],
         &[],
     );
-    for at in 0..2 {
-        let value = lines[at].spans.last().expect("a value span");
-        assert_eq!(value.style.fg, Some(ALERT), "{:?}", lines[at]);
-        let label = lines[at]
+    for line in &lines[..2] {
+        let value = line.spans.last().expect("a value span");
+        assert_eq!(value.style.fg, Some(ALERT), "{line:?}");
+        let label = line
             .spans
             .iter()
             .find(|span| span.content.contains("password") || span.content.contains("confirm"))
@@ -685,8 +689,8 @@ fn a_step_lands_on_the_next_question_without_opening_it() {
             .map(|span| span.content.to_string())
             .collect::<String>()
     };
-    assert_eq!(text(&lines[1]), "", "{:?}", lines);
-    assert!(text(&lines[2]).contains("name"), "{:?}", lines);
+    assert_eq!(text(&lines[1]), "", "{lines:?}");
+    assert!(text(&lines[2]).contains("name"), "{lines:?}");
 }
 
 #[test]
@@ -955,12 +959,15 @@ fn a_form_shows_every_field_and_opens_a_list_where_it_stands() {
         &[],
         &[],
     );
-    let mut terminal = Terminal::new(TestBackend::new(64, shown.len() as u16 + 1)).unwrap();
+    let mut terminal = Terminal::new(TestBackend::new(
+        64,
+        u16::try_from(shown.len() + 1).unwrap(),
+    ))
+    .unwrap();
     terminal
         .draw(|frame| sheet_of(frame, frame.area(), &shown, copy::INSTALL_KEYS, 0, 0))
         .unwrap();
     let drawn = terminal.backend().to_string();
-    eprintln!("SHOT\n{drawn}SHOT");
     let rows: Vec<&str> = drawn.lines().collect();
     assert!(rows[0].contains("?  disk"), "{drawn}");
     assert!(!rows[0].contains("> ?  disk"), "{drawn}");

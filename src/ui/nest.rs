@@ -165,7 +165,10 @@ pub(crate) fn nest<B: Backend>(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "each parameter is distinct state of the tree screen"
+)]
 pub(crate) fn nested(
     frame: &mut Frame,
     area: Rect,

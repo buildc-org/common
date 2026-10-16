@@ -19,14 +19,14 @@ fn a_pair_is_flagged_only_once_both_halves_have_been_left() {
         true => Vec::new(),
         false => vec![0, 1],
     };
-    assert_eq!(alerted(&fields, &[], &pair), [false, false]);
-    assert_eq!(alerted(&fields, &[0], &pair), [false, false]);
-    assert_eq!(alerted(&fields, &[0, 1], &pair), [true, true]);
+    assert_eq!(alerted(&fields, &[], pair), [false, false]);
+    assert_eq!(alerted(&fields, &[0], pair), [false, false]);
+    assert_eq!(alerted(&fields, &[0, 1], pair), [true, true]);
     let same = [
         Field::secret("password", "x"),
         Field::secret("confirm", "x"),
     ];
-    assert_eq!(alerted(&same, &[0, 1], &pair), [false, false]);
+    assert_eq!(alerted(&same, &[0, 1], pair), [false, false]);
 }
 
 #[test]

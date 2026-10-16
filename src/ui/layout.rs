@@ -12,12 +12,12 @@ const CARET_STEPS: usize = 8;
 
 pub(crate) fn alerted(
     fields: &[Field],
-    left: &[usize],
+    visited: &[usize],
     invalid: impl Fn(&[Field]) -> Vec<usize>,
 ) -> Vec<bool> {
     let mut flags = vec![false; fields.len()];
     let named = invalid(fields);
-    if !named.is_empty() && named.iter().all(|row| left.contains(row)) {
+    if !named.is_empty() && named.iter().all(|row| visited.contains(row)) {
         for row in named {
             if let Some(flag) = flags.get_mut(row) {
                 *flag = true;
@@ -27,7 +27,14 @@ pub(crate) fn alerted(
     flags
 }
 
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "each parameter is distinct state of the form screen"
+)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one pass lays out every form row and tracks the focus line and the tail"
+)]
 pub(crate) fn laid_out(
     fields: &[Field],
     visible: &[usize],
@@ -44,7 +51,7 @@ pub(crate) fn laid_out(
     let table_focused = matches!(mode, Mode::Table | Mode::TableMenu { .. });
     let open = match mode {
         Mode::Open(at) => Some(*at),
-        _ => None,
+        Mode::Rows | Mode::Typing | Mode::Table | Mode::TableMenu { .. } => None,
     };
     let mut width = visible
         .iter()
@@ -97,7 +104,11 @@ pub(crate) fn laid_out(
             HeaderLine::Good(label, value) | HeaderLine::Warn(label, value) => {
                 let colour = match line {
                     HeaderLine::Good(..) => GOOD,
-                    _ => AMBER,
+                    HeaderLine::Section(_)
+                    | HeaderLine::Row(_)
+                    | HeaderLine::Pair(..)
+                    | HeaderLine::Warn(..)
+                    | HeaderLine::Placement { .. } => AMBER,
                 };
                 lines.push(Line::from(vec![
                     Span::styled(format!("     {label:<width$}  "), Style::new().dim()),
@@ -240,7 +251,14 @@ pub(crate) fn laid_out(
         if !matches!(field, Field::Pick { always: true, .. }) {
             row.push(match field {
                 Field::Secret { alert: true, .. } => Span::styled(value, Style::new().fg(ALERT)),
-                _ => Span::raw(value),
+                Field::Text { .. }
+                | Field::Secret { .. }
+                | Field::Pick { .. }
+                | Field::Measure { .. }
+                | Field::Fixed { .. }
+                | Field::Action { .. }
+                | Field::Gap
+                | Field::Table { .. } => Span::raw(value),
             });
         }
         if let Field::Measure { unit, .. } = field {
@@ -276,7 +294,7 @@ pub(crate) fn laid_out(
         let mut option_line = field_at + 1;
         if !any {
             lines.push(Line::from(Span::styled(
-                format!("      {}", NO_CHOICES),
+                format!("      {NO_CHOICES}"),
                 Style::new().dim(),
             )));
             continue;
