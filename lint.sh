@@ -23,5 +23,8 @@ echo "lint: the fuzz entry points compile"
 cargo clippy --locked --all-targets -- -D warnings
 echo "lint: clippy accepts every target"
 
+cargo clippy --locked --all-targets --features test-support -- -D warnings
+echo "lint: clippy accepts the test-support surface"
+
 cargo nextest run --locked
 echo "lint: the components do what they did"

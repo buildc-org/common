@@ -4,7 +4,7 @@ use crate::ui::form::{draw_table_menu, form_frame_rows};
 use crate::ui::layout::laid_out;
 use crate::ui::progress::{progress_head, working, ROWS};
 use crate::ui::review::{decide_content_height, decide_draw, sheet_of, written, LINE_ROWS};
-use crate::ui::term::{height as picker_height, render_with_title};
+use crate::ui::term::{height as picker_height, render_with_title, to_cells};
 use crate::ui::{Choice, Field, HeaderLine, LINE_KEYS, SIDE, SUB_KEYS};
 use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
@@ -223,7 +223,12 @@ impl ConfirmationFrame<'_> {
             SIDE,
             || {
                 (
-                    decide_content_height(self.heading, self.note, self.warning, self.rows) as u16,
+                    to_cells(decide_content_height(
+                        self.heading,
+                        self.note,
+                        self.warning,
+                        self.rows,
+                    )),
                     self.heading.to_string(),
                 )
             },
@@ -275,7 +280,7 @@ mod tests {
 
     #[test]
     fn full_screen_snapshots_use_the_production_chrome() {
-        let screen = Screen::full_screen(80, 25, "Install Buildc");
+        let screen = Screen::full_screen(80, 25, "Install bootc-anywhere");
         let drawn = screen
             .picker(
                 "Choose a disk",
@@ -294,7 +299,7 @@ mod tests {
 
     #[test]
     fn screen_chrome_is_scoped_to_one_render() {
-        let full_screen = Screen::full_screen(80, 25, "Install Buildc");
+        let full_screen = Screen::full_screen(80, 25, "Install bootc-anywhere");
         full_screen.picker(
             "Choose a disk",
             &[Choice::new("/dev/vda", "20 GB")],
@@ -341,7 +346,7 @@ mod tests {
 
     #[test]
     fn overlays_keep_their_window_and_the_form_behind_them() {
-        let screen = Screen::full_screen(80, 25, "Install Buildc");
+        let screen = Screen::full_screen(80, 25, "Install bootc-anywhere");
         let base_fields = [Field::text("Computer name", "deb2")];
         let visible = [0];
         let backdrop = FormFrame {
@@ -362,7 +367,7 @@ mod tests {
         let actions = ["Open"];
         for (title, expected) in [
             (Some("Enter passphrase"), "Enter passphrase"),
-            (None, "Install Buildc"),
+            (None, "Install bootc-anywhere"),
         ] {
             let overlay = screen.overlay(40, 10, title, &backdrop);
             let drawn = FormFrame {
@@ -386,7 +391,7 @@ mod tests {
             assert_eq!(drawn.0[(59, 16)].symbol(), "╯");
             let snapshot = drawn.to_string();
             assert_eq!(
-                snapshot.matches("Install Buildc").count(),
+                snapshot.matches("Install bootc-anywhere").count(),
                 usize::from(title.is_none()) + 1,
                 "{snapshot}"
             );

@@ -12,7 +12,10 @@ use ratatui::layout::Rect;
 use ratatui::Frame;
 
 pub enum Field {
-    Text { label: String, value: String },
+    Text {
+        label: String,
+        value: String,
+    },
     Secret {
         label: String,
         value: String,
@@ -30,8 +33,14 @@ pub enum Field {
         value: String,
         unit: String,
     },
-    Fixed { label: String, value: String },
-    Action { label: String, value: String },
+    Fixed {
+        label: String,
+        value: String,
+    },
+    Action {
+        label: String,
+        value: String,
+    },
     Gap,
     Table {
         label: String,
@@ -287,15 +296,16 @@ pub enum HeaderLine {
     },
 }
 
-pub(super) enum Mode {
+#[cfg_attr(
+    not(feature = "test-support"),
+    expect(unreachable_pub, reason = "ui::testing re-exports it as FormMode")
+)]
+pub enum Mode {
     Rows,
     Typing,
     Open(usize),
     Table,
-    TableMenu {
-        open: Option<usize>,
-        cursor: usize,
-    },
+    TableMenu { open: Option<usize>, cursor: usize },
 }
 
 pub(crate) fn form_frame_rows(lines: usize) -> u16 {
@@ -325,7 +335,7 @@ pub fn form(
     header: &[HeaderLine],
     sections: &[(usize, &str)],
     start: usize,
-    left: &mut Vec<usize>,
+    visited: &mut Vec<usize>,
 ) -> Result<Filled, String> {
     let rows = fields
         .iter()
@@ -370,7 +380,7 @@ pub fn form(
                     }
                 }
             }
-            let flagged = alerted(fields, left, &invalid);
+            let flagged = alerted(fields, visited, &invalid);
             for (at, field) in fields.iter_mut().enumerate() {
                 if let Field::Secret { alert, .. } = field {
                     *alert = flagged.get(at).copied().unwrap_or(false);
@@ -433,11 +443,12 @@ pub fn form(
             match &mut mode {
                 Mode::Typing => match key {
                     KeyCode::Enter => {
-                        left_row(left, row);
+                        mark_visited(visited, row);
                         if matches!(fields[row], Field::Measure { .. }) {
                             return Ok(Filled::Changed(row));
                         }
                         let next = onward(fields, &visible, &mut cursor);
+
                         if cursor == visible.len() && actions.is_empty() {
                             if blocked.is_none() {
                                 return Ok(Filled::Took(0));
@@ -447,15 +458,15 @@ pub fn form(
                         mode = next;
                     }
                     KeyCode::Esc => {
-                        left_row(left, row);
+                        mark_visited(visited, row);
                         mode = Mode::Rows;
                     }
                     KeyCode::Up => {
-                        left_row(left, row);
+                        mark_visited(visited, row);
                         mode = backward(fields, &visible, &mut cursor);
                     }
                     KeyCode::Down => {
-                        left_row(left, row);
+                        mark_visited(visited, row);
                         mode = onward(fields, &visible, &mut cursor);
                     }
                     KeyCode::Backspace => fields[row].pop(),
@@ -669,6 +680,8 @@ pub fn form(
     })
 }
 
+const TREE_PREFIX: [char; 5] = ['\u{251c}', '\u{2514}', '\u{2500}', '\u{2502}', ' '];
+
 pub(crate) fn draw_table_menu(
     frame: &mut Frame,
     area: Rect,
@@ -691,7 +704,7 @@ pub(crate) fn draw_table_menu(
         .get(*table_at)
         .and_then(|cells| cells.first())
         .map_or("", Cell::text)
-        .trim_start_matches(['\u{251c}', '\u{2514}', '\u{2500}', '\u{2502}', ' ']);
+        .trim_start_matches(TREE_PREFIX);
     menu_draw(frame, area, title, items, open, cursor);
 }
 
@@ -708,10 +721,10 @@ pub(crate) fn onward(fields: &[Field], visible: &[usize], cursor: &mut usize) ->
 pub(crate) fn backward(fields: &[Field], visible: &[usize], cursor: &mut usize) -> Mode {
     loop {
         let above = cursor.saturating_sub(1);
-        let stuck = above == *cursor;
+        let at_top = above == *cursor;
         *cursor = above;
         match visible.get(*cursor) {
-            Some(row) if !fields[*row].answerable() && !stuck => continue,
+            Some(row) if !fields[*row].answerable() && !at_top => continue,
             _ => return landed(fields, visible, *cursor),
         }
     }
@@ -786,9 +799,9 @@ pub(crate) fn form_room() -> usize {
     }
 }
 
-fn left_row(left: &mut Vec<usize>, row: usize) {
-    if !left.contains(&row) {
-        left.push(row);
+fn mark_visited(visited: &mut Vec<usize>, row: usize) {
+    if !visited.contains(&row) {
+        visited.push(row);
     }
 }
 
