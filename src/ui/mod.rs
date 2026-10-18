@@ -12,6 +12,12 @@ pub(crate) const EITHER_CANCEL: &str =
     "\u{2191}\u{2193} navigate \u{2022} \u{23ce}  confirm \u{2022} Esc cancel";
 pub const SIDE: &str = "\u{2190}/\u{2192} select \u{2022} \u{23ce}  confirm \u{2022} Esc back";
 pub(crate) const NEST: &str = "\u{2191}\u{2193} navigate \u{2022} \u{2190}/\u{2192} open \u{2022} \u{2423} toggle \u{2022} \u{23ce}  confirm \u{2022} Esc cancel";
+pub(crate) const NEST_HIDE: &str = "\u{2191}\u{2193} \u{2022} \u{2190}/\u{2192} open \u{2022} \u{2423} toggle \u{2022} \u{21e5} hide \u{2022} \u{23ce}  confirm \u{2022} Esc cancel";
+pub(crate) const NEST_SHOW: &str = "\u{2191}\u{2193} \u{2022} \u{2190}/\u{2192} open \u{2022} \u{2423} toggle \u{2022} \u{21e5} show \u{2022} \u{23ce}  confirm \u{2022} Esc cancel";
+pub(crate) const TOGGLE_HIDE: &str =
+    "\u{2191}\u{2193} navigate \u{2022} \u{2423} toggle \u{2022} \u{21e5} hide \u{2022} \u{23ce}  confirm \u{2022} Esc cancel";
+pub(crate) const TOGGLE_SHOW: &str =
+    "\u{2191}\u{2193} navigate \u{2022} \u{2423} toggle \u{2022} \u{21e5} show \u{2022} \u{23ce}  confirm \u{2022} Esc cancel";
 pub(crate) const SUB_KEYS: &str =
     "\u{2191}\u{2193} navigate \u{2022} \u{23ce}  select \u{2022} Esc back";
 pub(crate) const LINE_KEYS: &str = "\u{23ce}  confirm \u{2022} Esc cancel";

@@ -2,7 +2,7 @@ use crate::ui::choose::*;
 use crate::ui::chrome::*;
 use crate::ui::table;
 use crate::ui::term::*;
-use crate::ui::NEST;
+use crate::ui::{NEST, NEST_HIDE, NEST_SHOW};
 use ratatui::backend::Backend;
 use ratatui::crossterm::event::KeyCode;
 use ratatui::layout::{Constraint, Layout, Rect};
@@ -60,8 +60,18 @@ pub(crate) fn leaves(nodes: &[Node], at: usize) -> Vec<usize> {
         .collect()
 }
 
-pub(crate) fn check(on: &mut Vec<usize>, nodes: &[Node], at: usize) {
-    let leaves = leaves(nodes, at);
+fn choosable(nodes: &[Node], options: &[Choice], at: usize) -> Vec<usize> {
+    leaves(nodes, at)
+        .into_iter()
+        .filter(|leaf| options[*leaf].available)
+        .collect()
+}
+
+pub(crate) fn check(on: &mut Vec<usize>, nodes: &[Node], options: &[Choice], at: usize) {
+    let leaves = choosable(nodes, options, at);
+    if leaves.is_empty() {
+        return;
+    }
     if leaves.iter().all(|leaf| on.contains(leaf)) {
         on.retain(|held| !leaves.contains(held));
         return;
@@ -73,8 +83,13 @@ pub(crate) fn check(on: &mut Vec<usize>, nodes: &[Node], at: usize) {
     }
 }
 
-pub(crate) fn checkbox(on: &[usize], nodes: &[Node], at: usize) -> &'static str {
-    let leaves = leaves(nodes, at);
+pub(crate) fn checkbox(
+    on: &[usize],
+    nodes: &[Node],
+    options: &[Choice],
+    at: usize,
+) -> &'static str {
+    let leaves = choosable(nodes, options, at);
     match leaves.iter().filter(|leaf| on.contains(leaf)).count() {
         0 => "[ ] ",
         held if held == leaves.len() => "[x] ",
@@ -82,7 +97,21 @@ pub(crate) fn checkbox(on: &[usize], nodes: &[Node], at: usize) -> &'static str 
     }
 }
 
-pub(crate) fn shown(nodes: &[Node], options: &[Choice], open: &[bool], filter: &str) -> Vec<usize> {
+pub(crate) fn shown(
+    nodes: &[Node],
+    options: &[Choice],
+    open: &[bool],
+    filter: &str,
+    hide: bool,
+) -> Vec<usize> {
+    let kept = |at: usize| !hide || !choosable(nodes, options, at).is_empty();
+    shown_all(nodes, options, open, filter)
+        .into_iter()
+        .filter(|at| kept(*at))
+        .collect()
+}
+
+fn shown_all(nodes: &[Node], options: &[Choice], open: &[bool], filter: &str) -> Vec<usize> {
     if !filter.is_empty() {
         let filter = filter.to_lowercase();
         let matches = |choice: &Choice| {
@@ -122,17 +151,36 @@ pub(crate) fn nest<B: Backend>(
     let mut open = vec![false; tree.len()];
     let mut on = held.to_vec();
     let mut filter = String::new();
+    let mut hide = false;
+    let unavailable = options.iter().any(|choice| choice.dim);
     let mut state = ListState::default().with_selected(Some(0));
     loop {
-        let rows = shown(&tree, options, &open, &filter);
+        let rows = shown(&tree, options, &open, &filter, hide);
+        let legend = match (unavailable, hide) {
+            (false, _) => NEST,
+            (true, false) => NEST_HIDE,
+            (true, true) => NEST_SHOW,
+        };
         render(
             terminal,
             height(tree.len()) + 2,
-            NEST,
+            legend,
             question,
             |frame, area| {
                 nested(
-                    frame, area, question, options, &tree, &rows, &open, &on, &filter, &mut state,
+                    frame,
+                    area,
+                    question,
+                    options,
+                    &Tree {
+                        nodes: &tree,
+                        rows: &rows,
+                        open: &open,
+                        on: &on,
+                        filter: &filter,
+                        legend,
+                    },
+                    &mut state,
                 )
             },
         )?;
@@ -152,12 +200,19 @@ pub(crate) fn nest<B: Backend>(
                 if let Some(at) = row {
                     match (tree[at].at.is_some(), key) {
                         (true, KeyCode::Left | KeyCode::Right) => {}
-                        (true, _) => check(&mut on, &tree, at),
-                        (false, KeyCode::Char(' ')) => check(&mut on, &tree, at),
+                        (true, _) => check(&mut on, &tree, options, at),
+                        (false, KeyCode::Char(' ')) => check(&mut on, &tree, options, at),
                         (false, KeyCode::Left) => open[at] = false,
                         (false, _) => open[at] = true,
                     }
                 }
+            }
+            KeyCode::Tab if unavailable => {
+                hide = !hide;
+                let left = shown(&tree, options, &open, &filter, hide).len();
+                state.select(Some(
+                    state.selected().unwrap_or(0).min(left.saturating_sub(1)),
+                ));
             }
             KeyCode::Char(letter) => filter.push(letter),
             code => move_by(code, &mut state, rows.len()),
@@ -165,22 +220,31 @@ pub(crate) fn nest<B: Backend>(
     }
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "each parameter is distinct state of the tree screen"
-)]
+pub(crate) struct Tree<'a> {
+    pub(crate) nodes: &'a [Node],
+    pub(crate) rows: &'a [usize],
+    pub(crate) open: &'a [bool],
+    pub(crate) on: &'a [usize],
+    pub(crate) filter: &'a str,
+    pub(crate) legend: &'a str,
+}
+
 pub(crate) fn nested(
     frame: &mut Frame,
     area: Rect,
     question: &str,
     options: &[Choice],
-    nodes: &[Node],
-    rows: &[usize],
-    open: &[bool],
-    on: &[usize],
-    filter: &str,
+    tree: &Tree,
     state: &mut ListState,
 ) {
+    let Tree {
+        nodes,
+        rows,
+        open,
+        on,
+        filter,
+        legend,
+    } = *tree;
     let heading = head_row(question);
     let [head, body, detail, foot] = Layout::vertical([
         Constraint::Length(u16::from(!heading.is_empty())),
@@ -218,11 +282,15 @@ pub(crate) fn nested(
                 (false, true) => "\u{25be} ",
                 (false, false) => "\u{25b8} ",
             };
+            let ink = match node.at.is_some_and(|option| options[option].dim) {
+                true => Style::new().dim(),
+                false => Style::new(),
+            };
             ListItem::new(Line::from(vec![
-                Span::raw(checkbox(on, nodes, *at)),
-                Span::raw("  ".repeat(node.depth)),
-                Span::raw(sign),
-                Span::raw(&node.label),
+                Span::styled(checkbox(on, nodes, options, *at), ink),
+                Span::styled("  ".repeat(node.depth), ink),
+                Span::styled(sign, ink),
+                Span::styled(&node.label, ink),
             ]))
         })
         .collect();
@@ -240,7 +308,7 @@ pub(crate) fn nested(
                 true => String::new(),
                 false => format!("{filter}  "),
             }),
-            Span::styled(hint(NEST, state, body.height, shown), Style::new().dim()),
+            Span::styled(hint(legend, state, body.height, shown), Style::new().dim()),
         ]),
         foot,
     );
