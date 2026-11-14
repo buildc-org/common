@@ -104,8 +104,12 @@ pub(crate) fn shown(
     open: &[bool],
     filter: &str,
     hide: bool,
+    show_hidden: bool,
 ) -> Vec<usize> {
-    let kept = |at: usize| !hide || !choosable(nodes, options, at).is_empty();
+    let kept = |at: usize| {
+        let hidden = nodes[at].at.is_some_and(|option| options[option].hidden);
+        (show_hidden || !hidden) && (!hide || !choosable(nodes, options, at).is_empty())
+    };
     shown_all(nodes, options, open, filter)
         .into_iter()
         .filter(|at| kept(*at))
@@ -148,38 +152,50 @@ pub(crate) fn nest<B: Backend>(
     options: &[Choice],
     held: &[usize],
 ) -> Result<Answer, Error> {
-    let tree = nodes(options);
+    let unavailable = options.iter().any(|choice| choice.dim);
+    let hidden = has_hidden(options);
+    let mut options = options.to_vec();
+    for option in &mut options {
+        if option.hidden {
+            option.dim = true;
+        }
+    }
+    let tree = nodes(&options);
     let mut open = vec![false; tree.len()];
     let mut on = held.to_vec();
     let mut filter = String::new();
     let mut hide = false;
-    let unavailable = options.iter().any(|choice| choice.dim);
+    let mut show_hidden = false;
     let mut state = ListState::default().with_selected(Some(0));
     loop {
-        let rows = shown(&tree, options, &open, &filter, hide);
+        let rows = shown(&tree, &options, &open, &filter, hide, show_hidden);
         let legend = match (unavailable, hide) {
             (false, _) => NEST,
             (true, false) => NEST_HIDE,
             (true, true) => NEST_SHOW,
         };
+        let legend = match hidden {
+            true => with_hidden_key(legend, 'H'),
+            false => legend.to_string(),
+        };
         render(
             terminal,
             height(tree.len()) + 2,
-            legend,
+            &legend,
             question,
             |frame, area| {
                 nested(
                     frame,
                     area,
                     question,
-                    options,
+                    &options,
                     &Tree {
                         nodes: &tree,
                         rows: &rows,
                         open: &open,
                         on: &on,
                         filter: &filter,
-                        legend,
+                        legend: &legend,
                     },
                     &mut state,
                 )
@@ -201,8 +217,8 @@ pub(crate) fn nest<B: Backend>(
                 if let Some(at) = row {
                     match (tree[at].at.is_some(), key) {
                         (true, KeyCode::Left | KeyCode::Right) => {}
-                        (true, _) => check(&mut on, &tree, options, at),
-                        (false, KeyCode::Char(' ')) => check(&mut on, &tree, options, at),
+                        (true, _) => check(&mut on, &tree, &options, at),
+                        (false, KeyCode::Char(' ')) => check(&mut on, &tree, &options, at),
                         (false, KeyCode::Left) => open[at] = false,
                         (false, _) => open[at] = true,
                     }
@@ -210,10 +226,14 @@ pub(crate) fn nest<B: Backend>(
             }
             KeyCode::Tab if unavailable => {
                 hide = !hide;
-                let left = shown(&tree, options, &open, &filter, hide).len();
-                state.select(Some(
-                    state.selected().unwrap_or(0).min(left.saturating_sub(1)),
-                ));
+                let next = shown(&tree, &options, &open, &filter, hide, show_hidden);
+                reselect(&mut state, row, &next);
+            }
+            // Taking the uppercase H in this arm costs the text filter no match because the filter ignores case.
+            KeyCode::Char('H') if hidden => {
+                show_hidden = !show_hidden;
+                let next = shown(&tree, &options, &open, &filter, hide, show_hidden);
+                reselect(&mut state, row, &next);
             }
             KeyCode::Char(letter) => filter.push(letter),
             code => move_by(code, &mut state, rows.len()),

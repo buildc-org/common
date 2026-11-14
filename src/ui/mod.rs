@@ -45,7 +45,7 @@ pub use form::{form, opens_at, Field, Filled, HeaderLine};
 pub use menu::MenuItem;
 pub use partition_bar::Hole;
 pub use progress::Progress;
-pub use review::{decide, line, line_or_empty, offer_over, review};
+pub use review::{decide, line, line_or_empty, line_with_placeholder, offer_over, review};
 pub use term::{bold, own_screen, width};
 
 #[cfg(test)]

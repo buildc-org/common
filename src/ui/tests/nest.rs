@@ -29,7 +29,7 @@ fn nest_drawn_at(
     at: usize,
 ) -> String {
     let nodes = nodes(options);
-    let rows = shown(&nodes, options, open, filter, false);
+    let rows = shown(&nodes, options, open, filter, false, false);
     let mut state = ListState::default().with_selected(Some(at));
     let height = u16::try_from(rows.len() + 5).unwrap();
     let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
@@ -53,6 +53,15 @@ fn nest_drawn_at(
         })
         .unwrap();
     terminal.backend().to_string()
+}
+
+#[test]
+fn a_hidden_option_is_omitted_until_shown() {
+    let options = vec![Choice::new("visible", ""), Choice::new("base", "").hidden()];
+    let nodes = nodes(&options);
+    let open = vec![true; nodes.len()];
+    assert_eq!(shown(&nodes, &options, &open, "", false, false), vec![0]);
+    assert_eq!(shown(&nodes, &options, &open, "", false, true), vec![0, 1]);
 }
 
 #[test]
@@ -99,12 +108,15 @@ fn a_closed_branch_hides_what_it_contains_and_an_open_one_shows_it() {
     let options = rules();
     let nodes = nodes(&options);
     let mut open = vec![false; nodes.len()];
-    assert_eq!(shown(&nodes, &options, &open, "", false), vec![0, 6]);
+    assert_eq!(shown(&nodes, &options, &open, "", false, false), vec![0, 6]);
     open[0] = true;
-    assert_eq!(shown(&nodes, &options, &open, "", false), vec![0, 1, 4, 6]);
+    assert_eq!(
+        shown(&nodes, &options, &open, "", false, false),
+        vec![0, 1, 4, 6]
+    );
     open[1] = true;
     assert_eq!(
-        shown(&nodes, &options, &open, "", false),
+        shown(&nodes, &options, &open, "", false, false),
         vec![0, 1, 2, 3, 4, 6]
     );
 }
@@ -114,7 +126,7 @@ fn a_filtered_answer_names_the_option_chosen_and_not_the_row_it_was_on() {
     let options = rules();
     let nodes = nodes(&options);
     let open = vec![false; nodes.len()];
-    let rows = shown(&nodes, &options, &open, "signatures", false);
+    let rows = shown(&nodes, &options, &open, "signatures", false, false);
     assert_eq!(rows, vec![5]);
     let mut on = Vec::new();
     check(&mut on, &nodes, &options, rows[0]);
@@ -157,8 +169,11 @@ fn hiding_drops_each_unavailable_option_and_a_branch_left_empty() {
     let options = partly_unavailable();
     let nodes = nodes(&options);
     let open = vec![true; nodes.len()];
-    assert_eq!(shown(&nodes, &options, &open, "", true), vec![0, 1, 2, 6]);
-    assert_eq!(shown(&nodes, &options, &open, "", false).len(), 7);
+    assert_eq!(
+        shown(&nodes, &options, &open, "", true, false),
+        vec![0, 1, 2, 6]
+    );
+    assert_eq!(shown(&nodes, &options, &open, "", false, false).len(), 7);
 }
 
 #[test]
@@ -185,7 +200,7 @@ fn every_hint_fits_the_narrowest_terminal() {
     for legend in [NEST, NEST_HIDE, NEST_SHOW] {
         let options = rules();
         let nodes = nodes(&options);
-        let rows = shown(&nodes, &options, &[true; 7], "", false);
+        let rows = shown(&nodes, &options, &[true; 7], "", false, false);
         let mut state = ListState::default().with_selected(Some(0));
         let mut terminal = Terminal::new(TestBackend::new(60, 12)).unwrap();
         terminal
@@ -209,5 +224,58 @@ fn every_hint_fits_the_narrowest_terminal() {
             .unwrap();
         let drawn = terminal.backend().to_string();
         assert!(drawn.contains(legend), "{drawn}");
+    }
+}
+
+#[test]
+fn every_hidden_legend_fits_the_default_width() {
+    let mut state = ListState::default().with_selected(Some(0));
+    for hint in [PICK, TOGGLE, TOGGLE_HIDE, TOGGLE_SHOW] {
+        let legend = with_hidden_key(hint, 'h');
+        let mut terminal = Terminal::new(TestBackend::new(NARROWEST, 4)).unwrap();
+        terminal
+            .draw(|frame| {
+                draw(
+                    frame,
+                    frame.area(),
+                    "which module",
+                    &[Choice::new("gaming", "")],
+                    None,
+                    &legend,
+                    &mut state,
+                )
+            })
+            .unwrap();
+        let drawn = terminal.backend().to_string();
+        assert!(drawn.contains(&legend), "{drawn}");
+    }
+    for hint in [NEST, NEST_HIDE, NEST_SHOW] {
+        let legend = with_hidden_key(hint, 'H');
+        let options = rules();
+        let nodes = nodes(&options);
+        let rows = shown(&nodes, &options, &[true; 7], "", false, false);
+        let mut state = ListState::default().with_selected(Some(0));
+        let mut terminal = Terminal::new(TestBackend::new(NARROWEST, 12)).unwrap();
+        terminal
+            .draw(|frame| {
+                nested(
+                    frame,
+                    frame.area(),
+                    "which rules",
+                    &options,
+                    &Tree {
+                        nodes: &nodes,
+                        rows: &rows,
+                        open: &[true; 7],
+                        on: &[],
+                        filter: "",
+                        legend: &legend,
+                    },
+                    &mut state,
+                )
+            })
+            .unwrap();
+        let drawn = terminal.backend().to_string();
+        assert!(drawn.contains(&legend), "{drawn}");
     }
 }

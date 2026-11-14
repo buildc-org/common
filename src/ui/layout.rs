@@ -249,8 +249,18 @@ pub(crate) fn laid_out(
             Span::styled(format!("{:<width$}  ", field.label()), label_style),
         ];
         if !matches!(field, Field::Pick { always: true, .. }) {
+            let shows_hint = matches!(
+                field,
+                Field::Text {
+                    value: stored,
+                    placeholder,
+                    default,
+                    ..
+                } if stored.is_empty() && (placeholder.is_some() || default.is_some())
+            ) && !editing;
             row.push(match field {
                 Field::Secret { alert: true, .. } => Span::styled(value, Style::new().fg(ALERT)),
+                Field::Text { .. } if shows_hint => Span::styled(value, Style::new().dim()),
                 Field::Text { .. }
                 | Field::Secret { .. }
                 | Field::Pick { .. }

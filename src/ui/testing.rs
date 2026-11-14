@@ -152,7 +152,7 @@ impl Screen {
         self.render(
             LINE_KEYS,
             || (LINE_ROWS, question.to_string()),
-            |frame, area| written(frame, area, question, prefix, typed, default),
+            |frame, area| written(frame, area, question, prefix, typed, default, None),
         )
     }
 }
