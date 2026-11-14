@@ -142,10 +142,7 @@ impl Prompt {
             None => format!("{}: ", stem(&labelled)),
             Some(prefix) => format!("{labelled}\n{prefix}"),
         };
-        match self.read(&labelled, &shown)? {
-            answer if answer.is_empty() => missing().map(Some),
-            answer => Ok(Some(answer)),
-        }
+        or_missing(self.read(&labelled, &shown)?, missing).map(Some)
     }
 
     fn written_answer(
@@ -157,10 +154,7 @@ impl Prompt {
         let Some(typed) = ui::line(stem(question), prefix, default)? else {
             return Ok(None);
         };
-        let answer = match typed.is_empty() {
-            true => missing()?,
-            false => typed,
-        };
+        let answer = or_missing(typed, missing)?;
         println!("{}: {prefix}{answer}\n", stem(question));
         Ok(Some(answer))
     }
@@ -406,9 +400,25 @@ fn range(options: &[Choice]) -> String {
     }
 }
 
+fn or_missing(
+    answer: String,
+    missing: impl Fn() -> Result<String, String>,
+) -> Result<String, String> {
+    match answer.trim() {
+        "" => missing(),
+        kept => Ok(kept.to_string()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_whitespace_only_answer_is_missing() {
+        let error = or_missing("   ".to_string(), || Err("missing".to_string())).unwrap_err();
+        assert_eq!(error, "missing");
+    }
 
     fn options(count: usize) -> Vec<Choice> {
         (0..count)
