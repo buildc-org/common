@@ -16,6 +16,8 @@ pub enum Field {
     Text {
         label: String,
         value: String,
+        placeholder: Option<String>,
+        default: Option<String>,
     },
     Secret {
         label: String,
@@ -62,7 +64,29 @@ impl Field {
         Self::Text {
             label: label.to_string(),
             value: value.to_string(),
+            placeholder: None,
+            default: None,
         }
+    }
+
+    /// Every field other than a text row ignores the placeholder.
+    pub fn placeholder(mut self, placeholder: &str) -> Self {
+        if let Self::Text {
+            placeholder: held, ..
+        } = &mut self
+        {
+            *held = Some(placeholder.to_string());
+        }
+        self
+    }
+
+    /// If the user leaves the text row empty, then the form answers with this default.
+    /// Every other field ignores it.
+    pub fn default_value(mut self, default: &str) -> Self {
+        if let Self::Text { default: held, .. } = &mut self {
+            *held = Some(default.to_string());
+        }
+        self
     }
 
     pub fn secret(label: &str, value: &str) -> Self {
@@ -198,8 +222,11 @@ impl Field {
 
     pub fn value(&self) -> String {
         match self {
-            Self::Text { value, .. }
-            | Self::Secret { value, .. }
+            Self::Text { value, default, .. } => match value.is_empty() {
+                true => default.clone().unwrap_or_default(),
+                false => value.clone(),
+            },
+            Self::Secret { value, .. }
             | Self::Measure { value, .. }
             | Self::Fixed { value, .. }
             | Self::Action { value, .. } => value.clone(),
@@ -220,9 +247,20 @@ impl Field {
                 Ok(number) => format!("{number:.1}"),
                 Err(_) => value.clone(),
             },
+            Self::Text {
+                value,
+                placeholder,
+                default,
+                ..
+            } => match value.is_empty() {
+                true => placeholder
+                    .clone()
+                    .or_else(|| default.clone())
+                    .unwrap_or_default(),
+                false => value.clone(),
+            },
             Self::Table { .. } => String::new(),
-            Self::Text { .. }
-            | Self::Secret { .. }
+            Self::Secret { .. }
             | Self::Pick { .. }
             | Self::Fixed { .. }
             | Self::Action { .. }
@@ -233,9 +271,8 @@ impl Field {
     pub(crate) fn typing(&self) -> String {
         match self {
             Self::Secret { value, .. } if !revealed() => "*".repeat(value.chars().count()),
-            Self::Measure { value, .. } => value.clone(),
-            Self::Text { .. }
-            | Self::Secret { .. }
+            Self::Measure { value, .. } | Self::Text { value, .. } => value.clone(),
+            Self::Secret { .. }
             | Self::Pick { .. }
             | Self::Fixed { .. }
             | Self::Action { .. }

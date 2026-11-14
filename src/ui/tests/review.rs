@@ -355,26 +355,50 @@ fn a_confirmation_that_does_not_fit_still_wraps_its_note_and_keeps_its_answers()
     assert!(drawn.contains(copy::GO_BACK), "{drawn}");
 }
 
-fn typed_line(prefix: &str, typed: &str, default: Option<&str>) -> String {
+fn typed_line(
+    prefix: &str,
+    typed: &str,
+    default: Option<&str>,
+    placeholder: Option<&str>,
+) -> String {
     let mut terminal = Terminal::new(TestBackend::new(60, 3)).unwrap();
     terminal
-        .draw(|frame| written(frame, frame.area(), "who owns it", prefix, typed, default))
+        .draw(|frame| {
+            written(
+                frame,
+                frame.area(),
+                "who owns it",
+                prefix,
+                typed,
+                default,
+                placeholder,
+            )
+        })
         .unwrap();
     terminal.backend().to_string()
 }
 
 #[test]
 fn a_default_is_shown_until_something_is_typed_over_it() {
-    let empty = typed_line("github.com/", "", Some("someone"));
+    let empty = typed_line("github.com/", "", Some("someone"), None);
     assert!(empty.contains("github.com/someone"), "{empty}");
     assert!(empty.contains(LINE_KEYS), "{empty}");
 
-    let over = typed_line("github.com/", "else", Some("someone"));
+    let over = typed_line("github.com/", "else", Some("someone"), None);
     assert!(over.contains("github.com/else"), "{over}");
     assert!(!over.contains("someone"), "{over}");
 
-    let bare = typed_line("", "", None);
+    let bare = typed_line("", "", None, None);
     assert!(bare.contains("who owns it"), "{bare}");
     let answer = bare.lines().nth(1).unwrap().replace('"', "");
     assert_eq!(answer.trim(), "", "{bare}");
+}
+
+#[test]
+fn a_placeholder_is_shown_until_the_line_holds_text() {
+    let empty = typed_line("", "", None, Some("enter for default (apps)"));
+    assert!(empty.contains("enter for default (apps)"), "{empty}");
+    let over = typed_line("", "tools", None, Some("enter for default (apps)"));
+    assert!(over.contains("tools"), "{over}");
+    assert!(!over.contains("enter for default"), "{over}");
 }

@@ -261,11 +261,20 @@ fn sheet(rows: &[(String, String)], action: &str, blocked: Option<&str>) -> Vec<
 }
 
 pub fn line(question: &str, prefix: &str, default: Option<&str>) -> Result<Option<String>, Error> {
+    line_with_placeholder(question, prefix, None, default)
+}
+
+pub fn line_with_placeholder(
+    question: &str,
+    prefix: &str,
+    placeholder: Option<&str>,
+    default: Option<&str>,
+) -> Result<Option<String>, Error> {
     inline(LINE_ROWS, |terminal| {
         let mut typed = String::new();
         loop {
             render(terminal, LINE_ROWS, LINE_KEYS, question, |frame, area| {
-                written(frame, area, question, prefix, &typed, default)
+                written(frame, area, question, prefix, &typed, default, placeholder)
             })?;
             let Some(key) = read()? else { continue };
             match key {
@@ -292,6 +301,7 @@ pub(crate) fn written(
     prefix: &str,
     typed: &str,
     default: Option<&str>,
+    placeholder: Option<&str>,
 ) {
     let heading = head_row(question);
     let [head, body, foot] = Layout::vertical([
@@ -309,8 +319,9 @@ pub(crate) fn written(
             head,
         );
     }
-    let answer = match (typed.is_empty(), default) {
-        (true, Some(default)) => Span::styled(default, Style::new().dim()),
+    let answer = match (typed.is_empty(), placeholder, default) {
+        (true, Some(placeholder), _) => Span::styled(placeholder, Style::new().dim()),
+        (true, None, Some(default)) => Span::styled(default, Style::new().dim()),
         _ => Span::raw(typed),
     };
     frame.render_widget(Line::from(vec![Span::raw(prefix), answer]), body);

@@ -268,26 +268,46 @@ pub(crate) fn pick<B: Backend>(
     hint: &str,
     selected: usize,
 ) -> Result<Option<usize>, Error> {
-    let mut state = initial_state(options, selected);
+    let mut show_hidden = options.get(selected).is_some_and(|choice| choice.hidden);
+    let hidden = has_hidden(options);
+    let legend = match hidden {
+        true => with_hidden_key(hint, 'h'),
+        false => hint.to_string(),
+    };
+    let mut state = {
+        let (kept, rows) = visible(options, false, show_hidden);
+        let at = kept.iter().position(|at| *at == selected).unwrap_or(0);
+        initial_state(&rows, at)
+    };
     loop {
+        let (kept, rows) = visible(options, false, show_hidden);
         render(
             terminal,
-            height(options.len()),
-            hint,
+            height(rows.len()),
+            &legend,
             question,
-            |frame, area| draw(frame, area, question, options, None, hint, &mut state),
+            |frame, area| draw(frame, area, question, &rows, None, &legend, &mut state),
         )?;
         let Some(key) = read()? else { continue };
         match key {
-            KeyCode::Enter => match state.selected() {
-                Some(at) if !available(options, at) => {}
-                chosen => return Ok(chosen),
-            },
+            KeyCode::Enter => {
+                let at = state.selected().and_then(|row| kept.get(row)).copied();
+                match at {
+                    Some(at) if !available(options, at) => {}
+                    Some(at) => return Ok(Some(at)),
+                    None => return Ok(None),
+                }
+            }
             KeyCode::Esc | KeyCode::Char('q') => return Ok(None),
+            KeyCode::Char('h') if hidden => {
+                let held = state.selected().and_then(|row| kept.get(row)).copied();
+                show_hidden = !show_hidden;
+                reselect(&mut state, held, &visible(options, false, show_hidden).0);
+            }
             code => {
                 let from = state.selected();
-                move_by(code, &mut state, options.len());
-                skip_spacers(code, options, &mut state, from);
+                move_by(code, &mut state, rows.len());
+                skip_spacers(code, &rows, &mut state, from);
             }
         }
     }
@@ -350,9 +370,11 @@ pub(crate) fn toggle<B: Backend>(
     let mut state = ListState::default().with_selected(Some(0));
     let mut on: Vec<usize> = held.to_vec();
     let mut hide = false;
+    let mut show_hidden = false;
     let dimmed = options.iter().any(|choice| choice.dim);
+    let hidden = has_hidden(options);
     loop {
-        let (kept, rows) = visible(options, hide);
+        let (kept, rows) = visible(options, hide, show_hidden);
         let marked: Vec<usize> = kept
             .iter()
             .enumerate()
@@ -364,10 +386,14 @@ pub(crate) fn toggle<B: Backend>(
             (true, false) => TOGGLE_HIDE,
             (true, true) => TOGGLE_SHOW,
         };
+        let legend = match hidden {
+            true => with_hidden_key(legend, 'h'),
+            false => legend.to_string(),
+        };
         render(
             terminal,
-            height(options.len()),
-            legend,
+            height(rows.len()),
+            &legend,
             question,
             |frame, area| {
                 draw(
@@ -376,7 +402,7 @@ pub(crate) fn toggle<B: Backend>(
                     question,
                     &rows,
                     Some(&marked),
-                    legend,
+                    &legend,
                     &mut state,
                 )
             },
@@ -389,11 +415,14 @@ pub(crate) fn toggle<B: Backend>(
                 _ => {}
             },
             KeyCode::Tab if dimmed => {
+                let held = state.selected().and_then(|row| kept.get(row)).copied();
                 hide = !hide;
-                let left = visible(options, hide).0.len();
-                state.select(Some(
-                    state.selected().unwrap_or(0).min(left.saturating_sub(1)),
-                ));
+                reselect(&mut state, held, &visible(options, hide, show_hidden).0);
+            }
+            KeyCode::Char('h') if hidden => {
+                let held = state.selected().and_then(|row| kept.get(row)).copied();
+                show_hidden = !show_hidden;
+                reselect(&mut state, held, &visible(options, hide, show_hidden).0);
             }
             KeyCode::Esc | KeyCode::Char('q') => return Ok(Answer::Cancelled),
             code => move_by(code, &mut state, kept.len()),
@@ -401,14 +430,43 @@ pub(crate) fn toggle<B: Backend>(
     }
 }
 
-pub(crate) fn visible(options: &[Choice], hide: bool) -> (Vec<usize>, Vec<Choice>) {
+pub(crate) fn has_hidden(options: &[Choice]) -> bool {
+    options.iter().any(|choice| choice.hidden)
+}
+
+pub(crate) fn with_hidden_key(legend: &str, key: char) -> String {
+    let item = format!(" \u{2022} {key} toggle hidden");
+    match legend.rfind(" \u{2022} Esc cancel") {
+        Some(at) => format!("{}{item}{}", &legend[..at], &legend[at..]),
+        None => format!("{legend}{item}"),
+    }
+}
+
+pub(crate) fn reselect(state: &mut ListState, held: Option<usize>, next: &[usize]) {
+    let at = held
+        .and_then(|held| next.iter().position(|at| *at == held))
+        .unwrap_or_else(|| state.selected().unwrap_or(0));
+    state.select(match next.is_empty() {
+        true => None,
+        false => Some(at.min(next.len() - 1)),
+    });
+}
+
+pub(crate) fn visible(
+    options: &[Choice],
+    hide: bool,
+    show_hidden: bool,
+) -> (Vec<usize>, Vec<Choice>) {
     let kept: Vec<usize> = (0..options.len())
-        .filter(|at| !hide || !options[*at].dim)
+        .filter(|at| (show_hidden || !options[*at].hidden) && (!hide || !options[*at].dim))
         .collect();
     let rows = kept
         .iter()
         .map(|at| {
             let mut row = options[*at].clone();
+            if row.hidden {
+                row.dim = true;
+            }
             row.parent = row
                 .parent
                 .and_then(|parent| kept.iter().position(|held| *held == parent));

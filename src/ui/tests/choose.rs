@@ -41,6 +41,55 @@ fn a_question_taking_one_answer_marks_nothing() {
 }
 
 #[test]
+fn a_shown_hidden_choice_is_dimmed_and_stays_selectable() {
+    let options = [
+        Choice::new("base-image", "infrastructure").hidden(),
+        Choice::new("apps", "a package group"),
+    ];
+    let (kept, rows) = visible(&options, false, false);
+    assert_eq!(kept, [1]);
+    assert_eq!(rows.len(), 1);
+    let (kept, rows) = visible(&options, false, true);
+    assert_eq!(kept, [0, 1]);
+    assert!(rows[0].hidden);
+    assert!(rows[0].dim);
+    assert!(rows[0].available);
+}
+
+#[test]
+fn a_shown_hidden_choice_that_is_unavailable_stays_refused() {
+    let options = [
+        Choice::new("one", "").unavailable().hidden(),
+        Choice::new("two", ""),
+    ];
+    let (kept, rows) = visible(&options, false, true);
+    assert_eq!(kept, [0, 1]);
+    assert!(!rows[0].available);
+    assert!(!available(&options, 0));
+    assert_eq!(visible(&options, true, true).0, [1]);
+}
+
+#[test]
+fn revealing_rows_above_the_cursor_keeps_the_same_choice() {
+    let mut state = ListState::default().with_selected(Some(0));
+    reselect(&mut state, Some(1), &[0, 1]);
+    assert_eq!(state.selected(), Some(1));
+    reselect(&mut state, Some(5), &[0, 1]);
+    assert_eq!(state.selected(), Some(1));
+    reselect(&mut state, Some(1), &[]);
+    assert_eq!(state.selected(), None);
+}
+
+#[test]
+fn hidden_is_detected_only_when_a_choice_is_hidden() {
+    assert!(has_hidden(&[
+        Choice::new("one", ""),
+        Choice::new("two", "").hidden()
+    ]));
+    assert!(!has_hidden(&[Choice::new("one", "")]));
+}
+
+#[test]
 fn a_list_longer_than_the_window_says_how_far_down_it_is() {
     let short = ListState::default();
     assert_eq!(hint(PICK, &short, 8, 3), PICK);
@@ -218,8 +267,20 @@ fn a_hidden_option_shifts_no_drawn_parent() {
         Choice::new("image", ""),
         Choice::new("flavour", "").under(1),
     ];
-    let (kept, rows) = visible(&options, true);
+    let (kept, rows) = visible(&options, true, false);
     assert_eq!(kept, vec![1, 2]);
     assert_eq!(rows[1].parent, Some(0));
-    assert_eq!(visible(&options, false).0, vec![0, 1, 2]);
+    assert_eq!(visible(&options, false, false).0, vec![0, 1, 2]);
+}
+
+#[test]
+fn the_hidden_key_sits_before_the_cancel_key() {
+    assert_eq!(
+        with_hidden_key(PICK, 'h'),
+        "\u{2191}\u{2193} navigate \u{2022} \u{23ce}  select \u{2022} h toggle hidden \u{2022} Esc cancel"
+    );
+    assert_eq!(
+        with_hidden_key("a keys", 'h'),
+        "a keys \u{2022} h toggle hidden"
+    );
 }

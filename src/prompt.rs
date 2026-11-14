@@ -87,7 +87,18 @@ impl Prompt {
         flag: &str,
         default: Option<&str>,
     ) -> Result<String, Error> {
-        self.asked(given, question, flag, None, default)
+        self.asked(given, question, flag, None, default, None)
+    }
+
+    pub fn text_with_placeholder(
+        &self,
+        given: Option<String>,
+        question: &str,
+        placeholder: &str,
+        flag: &str,
+        default: Option<&str>,
+    ) -> Result<String, Error> {
+        self.asked(given, question, flag, None, default, Some(placeholder))
     }
 
     fn asked(
@@ -97,8 +108,9 @@ impl Prompt {
         flag: &str,
         prefix: Option<&str>,
         default: Option<&str>,
+        placeholder: Option<&str>,
     ) -> Result<String, Error> {
-        match self.asked_answer(given, question, flag, prefix, default)? {
+        match self.asked_answer(given, question, flag, prefix, default, placeholder)? {
             Some(answer) => Ok(answer),
             None => Err(Error::Cancelled),
         }
@@ -111,6 +123,7 @@ impl Prompt {
         flag: &str,
         prefix: Option<&str>,
         default: Option<&str>,
+        placeholder: Option<&str>,
     ) -> Result<Option<String>, Error> {
         if let Some(value) = given.filter(|value| !value.is_empty()) {
             return Ok(Some(value));
@@ -126,12 +139,15 @@ impl Prompt {
             return missing().map(Some);
         }
         if self.draw {
-            return Self::written_answer(question, prefix.unwrap_or(""), default, missing);
+            return Self::written_answer(
+                question,
+                prefix.unwrap_or(""),
+                default,
+                placeholder,
+                missing,
+            );
         }
-        let labelled = match default {
-            Some(default) => format!("{} [{default}]", stem(question)),
-            None => question.to_string(),
-        };
+        let labelled = labelled(question, default, placeholder);
         let shown = match prefix {
             None => format!("{}: ", stem(&labelled)),
             Some(prefix) => format!("{labelled}\n{prefix}"),
@@ -143,9 +159,11 @@ impl Prompt {
         question: &str,
         prefix: &str,
         default: Option<&str>,
+        placeholder: Option<&str>,
         missing: impl Fn() -> Result<String, Error>,
     ) -> Result<Option<String>, Error> {
-        let Some(typed) = ui::line(stem(question), prefix, default)? else {
+        let Some(typed) = ui::line_with_placeholder(stem(question), prefix, placeholder, default)?
+        else {
             return Ok(None);
         };
         let answer = or_missing(typed, missing)?;
@@ -161,7 +179,7 @@ impl Prompt {
         prefix: &str,
         default: Option<&str>,
     ) -> Result<String, Error> {
-        self.asked(given, question, flag, Some(prefix), default)
+        self.asked(given, question, flag, Some(prefix), default, None)
     }
 
     pub fn confirm(&self, question: &str, yes: &str, no: &str) -> Result<bool, Error> {
@@ -397,6 +415,17 @@ fn range(options: &[Choice]) -> String {
     }
 }
 
+fn labelled(question: &str, default: Option<&str>, placeholder: Option<&str>) -> String {
+    match (default, placeholder) {
+        (None, None) => question.to_string(),
+        (Some(default), None) => format!("{} [{default}]", stem(question)),
+        (None, Some(placeholder)) => format!("{} ({placeholder})", stem(question)),
+        (Some(default), Some(placeholder)) => {
+            format!("{} ({placeholder}) [{default}]", stem(question))
+        }
+    }
+}
+
 fn or_missing(
     answer: String,
     missing: impl Fn() -> Result<String, Error>,
@@ -412,11 +441,44 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_placeholder_prompt_takes_the_answer_or_the_default() {
+        let prompt = Prompt::scripted(vec!["nano".to_string()]);
+        assert_eq!(
+            prompt
+                .text_with_placeholder(None, "packages", "hint", "flag", None)
+                .unwrap(),
+            "nano"
+        );
+        let prompt = Prompt::scripted(vec![String::new()]);
+        assert_eq!(
+            prompt
+                .text_with_placeholder(None, "packages", "hint", "flag", Some("apps"))
+                .unwrap(),
+            "apps"
+        );
+    }
+
+    #[test]
     fn a_whitespace_only_answer_is_missing() {
         let error = or_missing("   ".to_string(), || {
             Err(Error::Failed("missing".to_string()))
         });
         assert_eq!(error, Err(Error::Failed("missing".to_string())));
+    }
+
+    #[test]
+    fn a_plain_question_keeps_its_colon() {
+        assert_eq!(labelled("Question:", None, None), "Question:");
+    }
+
+    #[test]
+    fn the_label_carries_the_placeholder_before_the_default() {
+        assert_eq!(labelled("packages:", None, Some("hint")), "packages (hint)");
+        assert_eq!(labelled("packages:", Some("apps"), None), "packages [apps]");
+        assert_eq!(
+            labelled("packages:", Some("apps"), Some("hint")),
+            "packages (hint) [apps]"
+        );
     }
 
     #[test]

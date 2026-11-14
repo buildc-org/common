@@ -30,6 +30,20 @@ fn a_pair_is_flagged_only_once_both_halves_have_been_left() {
 }
 
 #[test]
+fn an_empty_text_row_shows_the_placeholder_and_passes_the_default() {
+    let empty = Field::text("group name", "")
+        .placeholder("enter for default (apps)")
+        .default_value("apps");
+    assert_eq!(empty.shown(), "enter for default (apps)");
+    assert_eq!(empty.value(), "apps");
+    let typed = Field::text("group name", "tools")
+        .placeholder("enter for default (apps)")
+        .default_value("apps");
+    assert_eq!(typed.shown(), "tools");
+    assert_eq!(typed.value(), "tools");
+}
+
+#[test]
 fn the_table_cursor_skips_what_cannot_be_taken() {
     let selectable = [true, false, true];
     assert_eq!(table_step(&selectable, 0, true), Some(2));
@@ -39,4 +53,19 @@ fn the_table_cursor_skips_what_cannot_be_taken() {
     assert_eq!(table_step(&[true], 0, true), None);
     assert_eq!(table_step(&[true], 0, false), None);
     assert_eq!(table_step(&[], 0, true), None);
+}
+
+#[test]
+fn an_empty_text_row_with_a_default_is_edited_from_empty() {
+    let field = Field::text("group name", "").default_value("apps");
+    assert_eq!(field.typing(), "");
+    assert_eq!(field.value(), "apps");
+}
+
+#[test]
+fn an_empty_text_row_shows_its_default_without_a_placeholder() {
+    let field = Field::text("group name", "").default_value("apps");
+    assert_eq!(field.shown(), "apps");
+    let hinted = field.placeholder("enter for default (apps)");
+    assert_eq!(hinted.shown(), "enter for default (apps)");
 }
