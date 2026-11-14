@@ -3,6 +3,7 @@ use crate::ui::chrome::*;
 use crate::ui::table;
 use crate::ui::term::*;
 use crate::ui::{NEST, NEST_HIDE, NEST_SHOW};
+use crate::Error;
 use ratatui::backend::Backend;
 use ratatui::crossterm::event::KeyCode;
 use ratatui::layout::{Constraint, Layout, Rect};
@@ -146,7 +147,7 @@ pub(crate) fn nest<B: Backend>(
     question: &str,
     options: &[Choice],
     held: &[usize],
-) -> Result<Answer, String> {
+) -> Result<Answer, Error> {
     let tree = nodes(options);
     let mut open = vec![false; tree.len()];
     let mut on = held.to_vec();

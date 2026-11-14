@@ -1,4 +1,5 @@
 use crate::ui::{self, Answer, Choice};
+use crate::Error;
 use std::cell::Cell;
 use std::io::{IsTerminal, Write};
 
@@ -7,13 +8,6 @@ fn stem(question: &str) -> &str {
 }
 
 const SCRIPT: &str = "BUILDC_ANSWERS";
-
-// The leading NUL keeps the sentinel from matching a user-facing error that reads `cancelled`.
-const CANCELLED: &str = "\0cancelled";
-
-pub fn cancelled(message: &str) -> bool {
-    message == CANCELLED
-}
 
 pub struct Prompt {
     ask: bool,
@@ -62,13 +56,13 @@ impl Prompt {
         self.draw
     }
 
-    fn read(&self, question: &str, shown: &str) -> Result<String, String> {
+    fn read(&self, question: &str, shown: &str) -> Result<String, Error> {
         let answer = self.answer(question, shown)?;
         println!();
         Ok(answer)
     }
 
-    fn answer(&self, question: &str, shown: &str) -> Result<String, String> {
+    fn answer(&self, question: &str, shown: &str) -> Result<String, Error> {
         if let Some((answers, at)) = &self.script {
             let answer = answers
                 .get(at.get())
@@ -92,7 +86,7 @@ impl Prompt {
         question: &str,
         flag: &str,
         default: Option<&str>,
-    ) -> Result<String, String> {
+    ) -> Result<String, Error> {
         self.asked(given, question, flag, None, default)
     }
 
@@ -103,10 +97,10 @@ impl Prompt {
         flag: &str,
         prefix: Option<&str>,
         default: Option<&str>,
-    ) -> Result<String, String> {
+    ) -> Result<String, Error> {
         match self.asked_answer(given, question, flag, prefix, default)? {
             Some(answer) => Ok(answer),
-            None => Err(CANCELLED.to_string()),
+            None => Err(Error::Cancelled),
         }
     }
 
@@ -117,16 +111,16 @@ impl Prompt {
         flag: &str,
         prefix: Option<&str>,
         default: Option<&str>,
-    ) -> Result<Option<String>, String> {
+    ) -> Result<Option<String>, Error> {
         if let Some(value) = given.filter(|value| !value.is_empty()) {
             return Ok(Some(value));
         }
         let missing = || match default {
             Some(default) => Ok(default.to_string()),
-            None => Err(format!(
+            None => Err(Error::Failed(format!(
                 "give {flag}, since nothing can be asked here: {}",
                 stem(question)
-            )),
+            ))),
         };
         if !self.ask {
             return missing().map(Some);
@@ -142,25 +136,19 @@ impl Prompt {
             None => format!("{}: ", stem(&labelled)),
             Some(prefix) => format!("{labelled}\n{prefix}"),
         };
-        match self.read(&labelled, &shown)? {
-            answer if answer.is_empty() => missing().map(Some),
-            answer => Ok(Some(answer)),
-        }
+        or_missing(self.read(&labelled, &shown)?, missing).map(Some)
     }
 
     fn written_answer(
         question: &str,
         prefix: &str,
         default: Option<&str>,
-        missing: impl Fn() -> Result<String, String>,
-    ) -> Result<Option<String>, String> {
+        missing: impl Fn() -> Result<String, Error>,
+    ) -> Result<Option<String>, Error> {
         let Some(typed) = ui::line(stem(question), prefix, default)? else {
             return Ok(None);
         };
-        let answer = match typed.is_empty() {
-            true => missing()?,
-            false => typed,
-        };
+        let answer = or_missing(typed, missing)?;
         println!("{}: {prefix}{answer}\n", stem(question));
         Ok(Some(answer))
     }
@@ -172,11 +160,11 @@ impl Prompt {
         flag: &str,
         prefix: &str,
         default: Option<&str>,
-    ) -> Result<String, String> {
+    ) -> Result<String, Error> {
         self.asked(given, question, flag, Some(prefix), default)
     }
 
-    pub fn confirm(&self, question: &str, yes: &str, no: &str) -> Result<bool, String> {
+    pub fn confirm(&self, question: &str, yes: &str, no: &str) -> Result<bool, Error> {
         if !self.ask {
             return Ok(false);
         }
@@ -189,9 +177,9 @@ impl Prompt {
         yes: &str,
         no: &str,
         current: bool,
-    ) -> Result<bool, String> {
+    ) -> Result<bool, Error> {
         self.confirm_answer(question, yes, no, current)?
-            .ok_or_else(|| CANCELLED.to_string())
+            .ok_or(Error::Cancelled)
     }
 
     fn confirm_answer(
@@ -200,7 +188,7 @@ impl Prompt {
         yes: &str,
         no: &str,
         current: bool,
-    ) -> Result<Option<bool>, String> {
+    ) -> Result<Option<bool>, Error> {
         if !self.ask {
             return Ok(Some(current));
         }
@@ -216,7 +204,7 @@ impl Prompt {
         Ok(Some(confirmation(&answer, no, current)))
     }
 
-    pub fn choose(&self, question: &str, options: &[Choice]) -> Result<Option<usize>, String> {
+    pub fn choose(&self, question: &str, options: &[Choice]) -> Result<Option<usize>, Error> {
         self.pick_one(question, options, None)
     }
 
@@ -225,7 +213,7 @@ impl Prompt {
         question: &str,
         options: &[Choice],
         current: usize,
-    ) -> Result<Option<usize>, String> {
+    ) -> Result<Option<usize>, Error> {
         self.pick_one(question, options, Some(current))
     }
 
@@ -234,7 +222,7 @@ impl Prompt {
         question: &str,
         options: &[Choice],
         current: Option<usize>,
-    ) -> Result<Option<usize>, String> {
+    ) -> Result<Option<usize>, Error> {
         if !self.ask || options.is_empty() {
             return Ok(current);
         }
@@ -243,7 +231,7 @@ impl Prompt {
             if let Some(index) = chosen {
                 println!("{}: {}\n", stem(question), options[index].label);
             }
-            return chosen.map(Some).ok_or_else(|| CANCELLED.to_string());
+            return chosen.map(Some).ok_or(Error::Cancelled);
         }
         Self::numbered(options, current.as_slice());
         let question = format!("{} [{}, 0 for none]", stem(question), range(options));
@@ -256,14 +244,14 @@ impl Prompt {
         question: &str,
         options: &[Choice],
         on: &[usize],
-    ) -> Result<Answer, String> {
+    ) -> Result<Answer, Error> {
         if !self.ask || options.is_empty() {
             return Ok(Answer::Chosen(on.to_vec()));
         }
         if self.draw {
             let answer = ui::multi(question, options, on)?;
             if matches!(answer, Answer::Cancelled) {
-                return Err(CANCELLED.to_string());
+                return Err(Error::Cancelled);
             }
             println!("{}: {}\n", stem(question), said(&answer, options));
             return Ok(answer);
@@ -311,7 +299,7 @@ fn one_answer(
     answer: &str,
     options: &[Choice],
     current: Option<usize>,
-) -> Result<Option<usize>, String> {
+) -> Result<Option<usize>, Error> {
     if let (true, Some(current)) = (answer.is_empty(), current) {
         return Ok(Some(current));
     }
@@ -326,16 +314,19 @@ fn one_answer(
     choosable(answer, options, at).map(Some)
 }
 
-fn choosable(answer: &str, options: &[Choice], at: usize) -> Result<usize, String> {
+fn choosable(answer: &str, options: &[Choice], at: usize) -> Result<usize, Error> {
     let option = &options[at];
     match (option.available, option.detail.is_empty()) {
         (true, _) => Ok(at),
-        (false, true) => Err(format!("`{answer}` cannot be chosen")),
-        (false, false) => Err(format!("`{answer}` cannot be chosen: {}", option.detail)),
+        (false, true) => Err(Error::Failed(format!("`{answer}` cannot be chosen"))),
+        (false, false) => Err(Error::Failed(format!(
+            "`{answer}` cannot be chosen: {}",
+            option.detail
+        ))),
     }
 }
 
-fn many_answer(answer: &str, options: &[Choice], on: &[usize]) -> Result<Answer, String> {
+fn many_answer(answer: &str, options: &[Choice], on: &[usize]) -> Result<Answer, Error> {
     if answer.is_empty() {
         return Ok(Answer::Chosen(on.to_vec()));
     }
@@ -406,9 +397,33 @@ fn range(options: &[Choice]) -> String {
     }
 }
 
+fn or_missing(
+    answer: String,
+    missing: impl Fn() -> Result<String, Error>,
+) -> Result<String, Error> {
+    match answer.trim() {
+        "" => missing(),
+        kept => Ok(kept.to_string()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_whitespace_only_answer_is_missing() {
+        let error = or_missing("   ".to_string(), || {
+            Err(Error::Failed("missing".to_string()))
+        });
+        assert_eq!(error, Err(Error::Failed("missing".to_string())));
+    }
+
+    #[test]
+    fn a_kept_answer_is_trimmed() {
+        let answer = or_missing("  x ".to_string(), || Ok("missing".to_string()));
+        assert_eq!(answer, Ok("x".to_string()));
+    }
 
     fn options(count: usize) -> Vec<Choice> {
         (0..count)
@@ -448,7 +463,7 @@ mod tests {
             .line(None, "Question:", "--answer", "prefix: ", None)
             .unwrap_err();
         assert_eq!(
-            error,
+            error.to_string(),
             "give --answer, since nothing can be asked here: Question"
         );
     }
@@ -472,7 +487,9 @@ mod tests {
     fn a_scripted_prompt_fails_when_the_script_ends() {
         assert_eq!(
             scripted(&[]).text(None, "Second?", "--second", None),
-            Err("nothing left in BUILDC_ANSWERS to answer `Second?` with".into())
+            Err(Error::Failed(
+                "nothing left in BUILDC_ANSWERS to answer `Second?` with".into()
+            ))
         );
     }
 
@@ -548,7 +565,7 @@ mod tests {
     fn a_scripted_picker_refuses_an_answer_outside_its_options() {
         assert_eq!(
             scripted(&["4"]).choose("Choose?", &options(3)),
-            Err("`4` is not one of them".into())
+            Err(Error::Failed("`4` is not one of them".into()))
         );
     }
 
@@ -558,11 +575,13 @@ mod tests {
         options[1] = Choice::new("two", "supports fedora").unavailable();
         assert_eq!(
             scripted(&["2"]).choose("Choose?", &options),
-            Err("`2` cannot be chosen: supports fedora".into())
+            Err(Error::Failed(
+                "`2` cannot be chosen: supports fedora".into()
+            ))
         );
         assert!(matches!(
             scripted(&["1 two"]).choose_many("Choose?", &options, &[]),
-            Err(message) if message == "`two` cannot be chosen: supports fedora"
+            Err(Error::Failed(message)) if message == "`two` cannot be chosen: supports fedora"
         ));
     }
 
@@ -613,12 +632,6 @@ mod tests {
             panic!("a silent answer cannot cancel");
         };
         assert_eq!(chosen, vec![0, 2]);
-    }
-
-    #[test]
-    fn the_cancelled_sentinel_is_not_a_user_facing_error() {
-        assert!(cancelled(CANCELLED));
-        assert!(!cancelled("cancelled"));
     }
 
     #[test]

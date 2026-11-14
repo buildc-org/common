@@ -7,6 +7,7 @@ use crate::ui::partition_bar::*;
 use crate::ui::review::*;
 use crate::ui::term::*;
 use crate::ui::SUB_KEYS;
+use crate::Error;
 use ratatui::crossterm::event::KeyCode;
 use ratatui::layout::Rect;
 use ratatui::Frame;
@@ -336,7 +337,7 @@ pub fn form(
     sections: &[(usize, &str)],
     start: usize,
     visited: &mut Vec<usize>,
-) -> Result<Filled, String> {
+) -> Result<Filled, Error> {
     let rows = fields
         .iter()
         .map(|field| match field {

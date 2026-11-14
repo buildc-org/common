@@ -1,7 +1,8 @@
 use crate::ui::choose::*;
 use crate::ui::chrome::*;
+use crate::Error;
 use ratatui::backend::Backend;
-use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
+use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::crossterm::terminal;
 use ratatui::layout::Rect;
 use ratatui::{DefaultTerminal, Frame, TerminalOptions, Viewport};
@@ -71,13 +72,14 @@ pub fn own_screen(title: impl Into<String>) {
     let _ = CHROME.set(title.into());
 }
 
-pub(crate) fn open(height: u16) -> Result<DefaultTerminal, String> {
+pub(crate) fn open(height: u16) -> Result<DefaultTerminal, Error> {
     give_size();
     let viewport = match CHROME.get() {
         Some(_) => Viewport::Fullscreen,
         None => Viewport::Inline(height),
     };
-    ratatui::try_init_with_options(TerminalOptions { viewport }).map_err(|err| err.to_string())
+    ratatui::try_init_with_options(TerminalOptions { viewport })
+        .map_err(|err| Error::Failed(err.to_string()))
 }
 
 pub(crate) fn close(mut terminal: DefaultTerminal) {
@@ -94,9 +96,10 @@ pub(crate) fn close(mut terminal: DefaultTerminal) {
 
 pub(crate) fn inline<T>(
     height: u16,
-    body: impl FnOnce(&mut DefaultTerminal) -> Result<T, String>,
-) -> Result<T, String> {
+    body: impl FnOnce(&mut DefaultTerminal) -> Result<T, Error>,
+) -> Result<T, Error> {
     let mut terminal = open(height)?;
+    // The body's error returns only after `close` takes the terminal out of raw mode.
     let out = body(&mut terminal);
     close(terminal);
     out
@@ -108,7 +111,7 @@ pub(crate) fn render<B: Backend>(
     keys: &str,
     head: &str,
     body: impl FnOnce(&mut Frame, Rect),
-) -> Result<(), String> {
+) -> Result<(), Error> {
     render_with_title(
         terminal,
         CHROME.get().map(String::as_str),
@@ -126,7 +129,7 @@ pub(crate) fn render_with_title<B: Backend>(
     keys: &str,
     head: &str,
     body: impl FnOnce(&mut Frame, Rect),
-) -> Result<(), String> {
+) -> Result<(), Error> {
     terminal
         .draw(|frame| {
             in_frame_box(has_box(title), || {
@@ -135,10 +138,10 @@ pub(crate) fn render_with_title<B: Backend>(
             });
         })
         .map(|_| ())
-        .map_err(|err| err.to_string())
+        .map_err(|err| Error::Failed(err.to_string()))
 }
 
-pub(crate) fn read_for(ms: u64) -> Result<Option<KeyCode>, String> {
+pub(crate) fn read_for(ms: u64) -> Result<Option<KeyCode>, Error> {
     let ready = event::poll(std::time::Duration::from_millis(ms)).map_err(|err| err.to_string())?;
     match ready {
         true => read(),
@@ -146,17 +149,19 @@ pub(crate) fn read_for(ms: u64) -> Result<Option<KeyCode>, String> {
     }
 }
 
-pub const INTERRUPTED: &str = "interrupted";
-
 pub(crate) fn revealed() -> bool {
     REVEAL.with(std::cell::Cell::get)
 }
 
-pub(crate) fn read() -> Result<Option<KeyCode>, String> {
+pub(crate) fn read() -> Result<Option<KeyCode>, Error> {
     let Event::Key(key) = event::read().map_err(|err| err.to_string())? else {
         return Ok(None);
     };
-    // A terminal may report Alt as a modifier key event rather than a modifier on the key.
+    pressed(key)
+}
+
+pub(crate) fn pressed(key: KeyEvent) -> Result<Option<KeyCode>, Error> {
+    // A terminal may report Alt as its own key event instead of as a modifier on another key.
     let alt = key.modifiers.contains(KeyModifiers::ALT)
         || matches!(
             key.code,
@@ -172,6 +177,7 @@ pub(crate) fn read() -> Result<Option<KeyCode>, String> {
             return Ok(None);
         }
         KeyEventKind::Press | KeyEventKind::Repeat => {
+            // If the terminal reports no key release, then the next key without Alt ends the Alt reveal.
             REVEAL.with(|reveal| reveal.set(false));
         }
         _ => return Ok(None),
@@ -180,8 +186,9 @@ pub(crate) fn read() -> Result<Option<KeyCode>, String> {
         return Ok(None);
     }
     match key.code {
+        // Raw mode stops the terminal from turning Ctrl-C into SIGINT.
         KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-            Err(INTERRUPTED.to_string())
+            Err(Error::Interrupted)
         }
         code => Ok(Some(code)),
     }

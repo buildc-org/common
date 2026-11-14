@@ -3,6 +3,7 @@ use crate::ui::chrome::*;
 use crate::ui::table;
 use crate::ui::term::*;
 use crate::ui::{LINE_KEYS, SIDE};
+use crate::Error;
 use ratatui::crossterm::event::KeyCode;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Style, Stylize};
@@ -54,7 +55,7 @@ pub fn review(
     keys: &str,
     blocked: Option<&str>,
     at: usize,
-) -> Result<Option<usize>, String> {
+) -> Result<Option<usize>, Error> {
     let options = sheet(rows, action, blocked);
     let chosen = inline(to_cells(options.len() + 2), |terminal| {
         pick(
@@ -96,7 +97,7 @@ pub fn decide(
     ready: &str,
     yes: &str,
     no: &str,
-) -> Result<bool, String> {
+) -> Result<bool, Error> {
     let content = decide_content_height(heading, note, warning, rows);
     let mut button = 0;
     inline(to_cells(content + 2), |terminal| loop {
@@ -108,9 +109,9 @@ pub fn decide(
                 .height
                 .into(),
         ) {
-            return Err(
+            return Err(Error::Failed(
                 "the confirmation is too tall to show every destructive change".to_string(),
-            );
+            ));
         }
         render(terminal, to_cells(content), SIDE, heading, |frame, area| {
             decide_draw(
@@ -230,7 +231,7 @@ pub fn offer_over(
     rows: Vec<Choice>,
     actions: &[Choice],
     keys: &str,
-) -> Result<Option<usize>, String> {
+) -> Result<Option<usize>, Error> {
     let mut options = rows;
     let first = options.len() + 1;
     options.push(Choice::new("", ""));
@@ -259,7 +260,7 @@ fn sheet(rows: &[(String, String)], action: &str, blocked: Option<&str>) -> Vec<
     options
 }
 
-pub fn line(question: &str, prefix: &str, default: Option<&str>) -> Result<Option<String>, String> {
+pub fn line(question: &str, prefix: &str, default: Option<&str>) -> Result<Option<String>, Error> {
     inline(LINE_ROWS, |terminal| {
         let mut typed = String::new();
         loop {
@@ -280,11 +281,7 @@ pub fn line(question: &str, prefix: &str, default: Option<&str>) -> Result<Optio
     })
 }
 
-pub fn line_or_empty(
-    question: &str,
-    prefix: &str,
-    default: Option<&str>,
-) -> Result<String, String> {
+pub fn line_or_empty(question: &str, prefix: &str, default: Option<&str>) -> Result<String, Error> {
     Ok(line(question, prefix, default)?.unwrap_or_default())
 }
 
