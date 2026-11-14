@@ -1,5 +1,6 @@
 use crate::ui::progress::*;
 use crate::ui::term::*;
+use crate::Error;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
@@ -111,8 +112,8 @@ pub(crate) fn in_overlay_frame<T>(
 pub fn in_overlay<T>(
     width: u16,
     height: u16,
-    body: impl FnOnce() -> Result<T, String>,
-) -> Result<T, String> {
+    body: impl FnOnce() -> Result<T, Error>,
+) -> Result<T, Error> {
     in_overlay_frame(width, height, None, None, body)
 }
 
@@ -120,8 +121,8 @@ pub fn in_titled_overlay<T>(
     width: u16,
     height: u16,
     title: &str,
-    body: impl FnOnce() -> Result<T, String>,
-) -> Result<T, String> {
+    body: impl FnOnce() -> Result<T, Error>,
+) -> Result<T, Error> {
     in_overlay_frame(width, height, Some(title), None, body)
 }
 

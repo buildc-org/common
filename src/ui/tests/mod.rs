@@ -8,6 +8,7 @@ mod nest;
 mod partition_bar;
 mod progress;
 mod review;
+mod term;
 
 use crate::ui::cells::*;
 use crate::ui::choose::*;

@@ -46,7 +46,7 @@ pub use menu::MenuItem;
 pub use partition_bar::Hole;
 pub use progress::Progress;
 pub use review::{decide, line, line_or_empty, offer_over, review};
-pub use term::{bold, own_screen, width, INTERRUPTED};
+pub use term::{bold, own_screen, width};
 
 #[cfg(test)]
 mod tests;

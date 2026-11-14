@@ -3,6 +3,7 @@ use crate::ui::nest::*;
 use crate::ui::progress::*;
 use crate::ui::term::*;
 use crate::ui::{EITHER, EITHER_CANCEL, PICK, TOGGLE, TOGGLE_HIDE, TOGGLE_SHOW};
+use crate::Error;
 use ratatui::backend::Backend;
 use ratatui::crossterm::event::KeyCode;
 use ratatui::layout::{Constraint, Layout, Rect};
@@ -91,7 +92,7 @@ pub enum Answer {
 
 pub(crate) const VISIBLE: usize = 8;
 
-pub fn select(question: &str, options: &[Choice]) -> Result<Option<usize>, String> {
+pub fn select(question: &str, options: &[Choice]) -> Result<Option<usize>, Error> {
     select_current(question, options, 0)
 }
 
@@ -99,7 +100,7 @@ pub fn select_current(
     question: &str,
     options: &[Choice],
     at: usize,
-) -> Result<Option<usize>, String> {
+) -> Result<Option<usize>, Error> {
     inline(height(options.len()), |terminal| {
         pick(terminal, question, options, PICK, at)
     })
@@ -112,7 +113,7 @@ pub fn choose(
     keys: &str,
     options: &[&str],
     at: usize,
-) -> Result<Option<usize>, String> {
+) -> Result<Option<usize>, Error> {
     let height = to_cells(options.len() + 4);
     in_titled_overlay(WINDOW_WIDTH, height, title, || {
         inline(height, |terminal| {
@@ -157,7 +158,7 @@ pub fn confirm_over(
     yes: &str,
     no: &str,
     keys: &str,
-) -> Result<bool, String> {
+) -> Result<bool, Error> {
     let mut button = 0usize;
     let head = usize::from(!heading.is_empty()) * 2;
     let height = to_cells(rows.len() + head + 2 + 4);
@@ -208,7 +209,7 @@ pub fn confirm_over(
     })
 }
 
-pub fn confirm(question: &str, yes: &str, no: &str) -> Result<Option<bool>, String> {
+pub fn confirm(question: &str, yes: &str, no: &str) -> Result<Option<bool>, Error> {
     confirm_current(question, yes, no, true)
 }
 
@@ -217,11 +218,11 @@ pub fn confirm_current(
     yes: &str,
     no: &str,
     current: bool,
-) -> Result<Option<bool>, String> {
+) -> Result<Option<bool>, Error> {
     confirm_choice(question, yes, no, current, EITHER_CANCEL)
 }
 
-pub fn confirm_or_no(question: &str, yes: &str, no: &str) -> Result<bool, String> {
+pub fn confirm_or_no(question: &str, yes: &str, no: &str) -> Result<bool, Error> {
     confirm_current_or_no(question, yes, no, true)
 }
 
@@ -230,7 +231,7 @@ pub fn confirm_current_or_no(
     yes: &str,
     no: &str,
     current: bool,
-) -> Result<bool, String> {
+) -> Result<bool, Error> {
     Ok(confirm_choice(question, yes, no, current, EITHER)?.unwrap_or(false))
 }
 
@@ -240,7 +241,7 @@ fn confirm_choice(
     no: &str,
     current: bool,
     keys: &str,
-) -> Result<Option<bool>, String> {
+) -> Result<Option<bool>, Error> {
     let options = [Choice::new(yes, ""), Choice::new(no, "")];
     let chosen = inline(height(options.len()), |terminal| {
         pick(terminal, question, &options, keys, usize::from(!current))
@@ -248,7 +249,7 @@ fn confirm_choice(
     Ok(chosen.map(|chosen| chosen == 0))
 }
 
-pub fn multi(question: &str, options: &[Choice], on: &[usize]) -> Result<Answer, String> {
+pub fn multi(question: &str, options: &[Choice], on: &[usize]) -> Result<Answer, Error> {
     if options.iter().any(|choice| !choice.group.is_empty()) {
         let rows = nodes(options).len();
         return inline(height(rows) + 2, |terminal| {
@@ -266,7 +267,7 @@ pub(crate) fn pick<B: Backend>(
     options: &[Choice],
     hint: &str,
     selected: usize,
-) -> Result<Option<usize>, String> {
+) -> Result<Option<usize>, Error> {
     let mut state = initial_state(options, selected);
     loop {
         render(
@@ -345,7 +346,7 @@ pub(crate) fn toggle<B: Backend>(
     question: &str,
     options: &[Choice],
     held: &[usize],
-) -> Result<Answer, String> {
+) -> Result<Answer, Error> {
     let mut state = ListState::default().with_selected(Some(0));
     let mut on: Vec<usize> = held.to_vec();
     let mut hide = false;

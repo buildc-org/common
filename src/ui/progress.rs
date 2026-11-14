@@ -1,5 +1,6 @@
 use crate::ui::chrome::*;
 use crate::ui::term::*;
+use crate::Error;
 use ratatui::crossterm::terminal;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Style, Stylize};
@@ -23,12 +24,15 @@ pub struct Progress {
 }
 
 impl Progress {
-    pub fn open(foot: &str) -> Result<Self, String> {
+    pub fn open(foot: &str) -> Result<Self, Error> {
         let terminal = open(ROWS)?;
-        // The progress screen reads no keys, so raw mode stays off and Ctrl-C interrupts the process.
+        // The progress view reads no keys.
+        // Outside raw mode a Ctrl-C from the user reaches the calling command as SIGINT.
         if let Err(err) = terminal::disable_raw_mode() {
             close(terminal);
-            return Err(format!("the terminal could not leave raw mode: {err}"));
+            return Err(Error::Failed(format!(
+                "the terminal could not leave raw mode: {err}"
+            )));
         }
         Ok(Self {
             terminal,
@@ -42,7 +46,7 @@ impl Progress {
         })
     }
 
-    pub fn step(&mut self, pct: u16, flight: u16, name: &str) -> Result<(), String> {
+    pub fn step(&mut self, pct: u16, flight: u16, name: &str) -> Result<(), Error> {
         self.pct = pct.min(100);
         self.flight = flight.min(100);
         self.within = 0;
@@ -54,12 +58,12 @@ impl Progress {
         crept(self.pct, self.flight, self.within)
     }
 
-    pub fn tick(&mut self) -> Result<(), String> {
+    pub fn tick(&mut self) -> Result<(), Error> {
         self.turn = self.turn.wrapping_add(1);
         self.show()
     }
 
-    pub fn note(&mut self, text: &str) -> Result<(), String> {
+    pub fn note(&mut self, text: &str) -> Result<(), Error> {
         self.within += 1;
         if self.notes.len() == LOGGED {
             self.notes.remove(0);
@@ -68,7 +72,7 @@ impl Progress {
         self.show()
     }
 
-    fn show(&mut self) -> Result<(), String> {
+    fn show(&mut self) -> Result<(), Error> {
         let (pct, turn, step, notes, foot) = (
             self.at(),
             self.turn,
