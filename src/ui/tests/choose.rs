@@ -82,11 +82,23 @@ fn revealing_rows_above_the_cursor_keeps_the_same_choice() {
 
 #[test]
 fn hidden_is_detected_only_when_a_choice_is_hidden() {
-    assert!(has_hidden(&[
-        Choice::new("one", ""),
-        Choice::new("two", "").hidden()
-    ]));
-    assert!(!has_hidden(&[Choice::new("one", "")]));
+    assert_eq!(
+        hidden_key(&[Choice::new("one", ""), Choice::new("two", "").hidden()]),
+        Some("toggle hidden")
+    );
+    assert_eq!(hidden_key(&[Choice::new("one", "")]), None);
+}
+
+#[test]
+fn the_first_hidden_row_names_the_hidden_key() {
+    assert_eq!(
+        hidden_key(&[
+            Choice::new("one", ""),
+            Choice::new("two", "").hidden_as("show all components"),
+            Choice::new("three", "").hidden_as("show more"),
+        ]),
+        Some("show all components")
+    );
 }
 
 #[test]
@@ -276,11 +288,11 @@ fn a_hidden_option_shifts_no_drawn_parent() {
 #[test]
 fn the_hidden_key_sits_before_the_cancel_key() {
     assert_eq!(
-        with_hidden_key(PICK, 'h'),
+        with_hidden_key(PICK, 'h', "toggle hidden"),
         "\u{2191}\u{2193} navigate \u{2022} \u{23ce}  select \u{2022} h toggle hidden \u{2022} Esc cancel"
     );
     assert_eq!(
-        with_hidden_key("a keys", 'h'),
+        with_hidden_key("a keys", 'h', "toggle hidden"),
         "a keys \u{2022} h toggle hidden"
     );
 }

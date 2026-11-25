@@ -230,8 +230,11 @@ fn every_hint_fits_the_narrowest_terminal() {
 #[test]
 fn every_hidden_legend_fits_the_default_width() {
     let mut state = ListState::default().with_selected(Some(0));
-    for hint in [PICK, TOGGLE, TOGGLE_HIDE, TOGGLE_SHOW] {
-        let legend = with_hidden_key(hint, 'h');
+    let labelled =
+        [PICK, TOGGLE, TOGGLE_HIDE, TOGGLE_SHOW].map(|hint| (hint, "show all components"));
+    let hints = [PICK, TOGGLE, TOGGLE_HIDE, TOGGLE_SHOW].map(|hint| (hint, "toggle hidden"));
+    for (hint, reveal) in hints.into_iter().chain(labelled) {
+        let legend = with_hidden_key(hint, 'h', reveal);
         let mut terminal = Terminal::new(TestBackend::new(NARROWEST, 4)).unwrap();
         terminal
             .draw(|frame| {
@@ -250,7 +253,7 @@ fn every_hidden_legend_fits_the_default_width() {
         assert!(drawn.contains(&legend), "{drawn}");
     }
     for hint in [NEST, NEST_HIDE, NEST_SHOW] {
-        let legend = with_hidden_key(hint, 'H');
+        let legend = with_hidden_key(hint, 'H', "toggle hidden");
         let options = rules();
         let nodes = nodes(&options);
         let rows = shown(&nodes, &options, &[true; 7], "", false, false);
