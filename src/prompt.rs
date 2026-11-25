@@ -219,7 +219,7 @@ impl Prompt {
         }
         let question = format!("{} ({yes}/{no})", stem(question));
         let answer = self.read(&question, &format!("{question}\n"))?;
-        Ok(Some(confirmation(&answer, no, current)))
+        Ok(Some(confirmation(&answer, yes, no, current)))
     }
 
     pub fn choose(&self, question: &str, options: &[Choice]) -> Result<Option<usize>, Error> {
@@ -305,9 +305,16 @@ impl Prompt {
     }
 }
 
-fn confirmation(answer: &str, no: &str, current: bool) -> bool {
+fn confirmation(answer: &str, yes: &str, no: &str, current: bool) -> bool {
     if answer.is_empty() {
         return current;
+    }
+    // A whole label decides first because two labels can share their first letter.
+    if answer.eq_ignore_ascii_case(yes) {
+        return true;
+    }
+    if answer.eq_ignore_ascii_case(no) {
+        return false;
     }
     let first = |word: &str| word.chars().next().map(|c| c.to_ascii_lowercase());
     first(answer) != first(no)
@@ -379,7 +386,7 @@ pub fn fuzz_answer(kind: u8, answers: &str) {
                 let _ = answer.to_string();
             }
             1 => {
-                let _ = confirmation(answer, "no", false);
+                let _ = confirmation(answer, "yes", "no", false);
             }
             2 => {
                 let _ = one_answer(answer, &options, Some(1));
@@ -600,6 +607,18 @@ mod tests {
         assert_eq!(
             scripted(&["anything else"]).confirm("Change?", "Always", "Never"),
             Ok(true)
+        );
+    }
+
+    #[test]
+    fn scripted_confirmations_take_a_whole_label_that_shares_the_first_letter() {
+        assert_eq!(
+            scripted(&["Confirm"]).confirm_current("Copy?", "Confirm", "Cancel", false),
+            Ok(true)
+        );
+        assert_eq!(
+            scripted(&["cancel"]).confirm_current("Copy?", "Confirm", "Cancel", true),
+            Ok(false)
         );
     }
 
