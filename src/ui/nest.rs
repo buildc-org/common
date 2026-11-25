@@ -153,7 +153,7 @@ pub(crate) fn nest<B: Backend>(
     held: &[usize],
 ) -> Result<Answer, Error> {
     let unavailable = options.iter().any(|choice| choice.dim);
-    let hidden = has_hidden(options);
+    let reveal = hidden_key(options).map(str::to_string);
     let mut options = options.to_vec();
     for option in &mut options {
         if option.hidden {
@@ -174,10 +174,7 @@ pub(crate) fn nest<B: Backend>(
             (true, false) => NEST_HIDE,
             (true, true) => NEST_SHOW,
         };
-        let legend = match hidden {
-            true => with_hidden_key(legend, 'H'),
-            false => legend.to_string(),
-        };
+        let legend = legend_with_hidden(legend, 'H', reveal.as_deref());
         render(
             terminal,
             height(tree.len()) + 2,
@@ -229,8 +226,8 @@ pub(crate) fn nest<B: Backend>(
                 let next = shown(&tree, &options, &open, &filter, hide, show_hidden);
                 reselect(&mut state, row, &next);
             }
-            // Taking the uppercase H in this arm costs the text filter no match because the filter ignores case.
-            KeyCode::Char('H') if hidden => {
+            // The filter ignores case and the uppercase H taken for the toggle still leaves every label reachable by h.
+            KeyCode::Char('H') if reveal.is_some() => {
                 show_hidden = !show_hidden;
                 let next = shown(&tree, &options, &open, &filter, hide, show_hidden);
                 reselect(&mut state, row, &next);

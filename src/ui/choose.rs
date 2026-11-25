@@ -20,6 +20,7 @@ pub struct Choice {
     pub group: String,
     pub available: bool,
     pub hidden: bool,
+    pub reveal: Option<String>,
     pub dim: bool,
     pub tint: bool,
     pub heading: bool,
@@ -35,6 +36,7 @@ impl Choice {
             group: String::new(),
             available: true,
             hidden: false,
+            reveal: None,
             dim: false,
             tint: false,
             heading: false,
@@ -50,6 +52,13 @@ impl Choice {
 
     pub fn hidden(mut self) -> Self {
         self.hidden = true;
+        self
+    }
+
+    /// The first hidden choice of a list names the key that reveals every hidden choice.
+    pub fn hidden_as(mut self, reveal: impl Into<String>) -> Self {
+        self.hidden = true;
+        self.reveal = Some(reveal.into());
         self
     }
 
@@ -269,11 +278,8 @@ pub(crate) fn pick<B: Backend>(
     selected: usize,
 ) -> Result<Option<usize>, Error> {
     let mut show_hidden = options.get(selected).is_some_and(|choice| choice.hidden);
-    let hidden = has_hidden(options);
-    let legend = match hidden {
-        true => with_hidden_key(hint, 'h'),
-        false => hint.to_string(),
-    };
+    let reveal = hidden_key(options);
+    let legend = legend_with_hidden(hint, 'h', reveal);
     let mut state = {
         let (kept, rows) = visible(options, false, show_hidden);
         let at = kept.iter().position(|at| *at == selected).unwrap_or(0);
@@ -299,7 +305,7 @@ pub(crate) fn pick<B: Backend>(
                 }
             }
             KeyCode::Esc | KeyCode::Char('q') => return Ok(None),
-            KeyCode::Char('h') if hidden => {
+            KeyCode::Char('h') if reveal.is_some() => {
                 let held = state.selected().and_then(|row| kept.get(row)).copied();
                 show_hidden = !show_hidden;
                 reselect(&mut state, held, &visible(options, false, show_hidden).0);
@@ -372,7 +378,7 @@ pub(crate) fn toggle<B: Backend>(
     let mut hide = false;
     let mut show_hidden = false;
     let dimmed = options.iter().any(|choice| choice.dim);
-    let hidden = has_hidden(options);
+    let reveal = hidden_key(options);
     loop {
         let (kept, rows) = visible(options, hide, show_hidden);
         let marked: Vec<usize> = kept
@@ -386,10 +392,7 @@ pub(crate) fn toggle<B: Backend>(
             (true, false) => TOGGLE_HIDE,
             (true, true) => TOGGLE_SHOW,
         };
-        let legend = match hidden {
-            true => with_hidden_key(legend, 'h'),
-            false => legend.to_string(),
-        };
+        let legend = legend_with_hidden(legend, 'h', reveal);
         render(
             terminal,
             height(rows.len()),
@@ -419,7 +422,7 @@ pub(crate) fn toggle<B: Backend>(
                 hide = !hide;
                 reselect(&mut state, held, &visible(options, hide, show_hidden).0);
             }
-            KeyCode::Char('h') if hidden => {
+            KeyCode::Char('h') if reveal.is_some() => {
                 let held = state.selected().and_then(|row| kept.get(row)).copied();
                 show_hidden = !show_hidden;
                 reselect(&mut state, held, &visible(options, hide, show_hidden).0);
@@ -430,15 +433,31 @@ pub(crate) fn toggle<B: Backend>(
     }
 }
 
-pub(crate) fn has_hidden(options: &[Choice]) -> bool {
-    options.iter().any(|choice| choice.hidden)
+pub(crate) fn hidden_key(options: &[Choice]) -> Option<&str> {
+    let first = options.iter().find(|choice| choice.hidden)?;
+    Some(first.reveal.as_deref().unwrap_or("toggle hidden"))
 }
 
-pub(crate) fn with_hidden_key(legend: &str, key: char) -> String {
-    let item = format!(" \u{2022} {key} toggle hidden");
-    match legend.rfind(" \u{2022} Esc cancel") {
+pub(crate) fn legend_with_hidden(legend: &str, key: char, reveal: Option<&str>) -> String {
+    match reveal {
+        Some(reveal) => with_hidden_key(legend, key, reveal),
+        None => legend.to_string(),
+    }
+}
+
+pub(crate) fn with_hidden_key(legend: &str, key: char, reveal: &str) -> String {
+    let item = format!(" \u{2022} {key} {reveal}");
+    let joined = match legend.rfind(" \u{2022} Esc cancel") {
         Some(at) => format!("{}{item}{}", &legend[..at], &legend[at..]),
         None => format!("{legend}{item}"),
+    };
+    if joined.chars().count() <= usize::from(NARROWEST) {
+        return joined;
+    }
+    // The Esc hint is the one item the legend can lose without hiding a key the user needs.
+    match joined.rfind(" \u{2022} Esc cancel") {
+        Some(at) => joined[..at].to_string(),
+        None => joined,
     }
 }
 
